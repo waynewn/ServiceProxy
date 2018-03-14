@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding="utf-8"?>
+<application version="1.0.1" centerIp='192.168.4.240' centerPort='9001' comment="comment是写的注释">
+	<log dir="/root/ServiceProxy/log" comment="日志存放路径" />
+	<monitor>
+            <services >
+                <service type='email' uri='/MailService/Broker/sendAsync'/>
+            </services>
+            <usergroup>
+                <group type='ErrorNode' data='user1@test.com,user2@test.com'/>
+            </usergroup>
+        </monitor>
+        <rewrite>
+		<rule from="/aa/bb/c" to="/aa/bb/sayhi"/>
+		<rule from="/aa/bb/cc" to="/aa/bb/sayhi_proxy"/>
+	</rewrite>
+	<node_templates>
+		<template id="paymentTpl" port="8010" dir="/root/ServiceProxy" comment="部署的路径，用于替换命令定义中{dir}">
+			<cmds>
+				<stop cmd="{dir}/src/stop.sh" comment="停止命令"/>
+				<start cmd="{dir}/src/start.sh"/>
+				<ping cmd="{dir}/src/cmd.sh" comment=" (健康检查，需要输出为ok表示正常工作中)"/>
+			</cmds>
+			<serivices>
+				<module name='aa' comment="(服务模块名：请求路径的根节点目录名)"/>
+			</serivices>
+		</template>
+		<template id="mailServTpl" port="8008" dir="/root/ServiceProxy" comment="部署的路径，用于替换命令定义中{dir}">
+			<cmds>
+				<stop cmd="{dir}/src/unset.sh" comment="停止命令"/>
+				<start cmd="{dir}/src/unset.sh"/>
+				<ping cmd="{dir}/src/EmailPing.sh" comment=" (健康检查，需要输出为ok表示正常工作中)"/>
+			</cmds>
+			<serivices>
+				<module name='MailService' comment="(服务模块名：请求路径的根节点目录名)"/>
+			</serivices>
+		</template>                
+	</node_templates>
+	
+	<servers comment="不支持一个ip上部署多个proxyserver">
+		<server ip="192.168.4.240" proxyport="9002" comment="center要能访问到的地址">
+			<nodes comment="该server里部署了的service node">
+				<instance name="mailServ01" templateId="mailServTpl"/>
+				<instance name="payment01" templateId="paymentTpl" active="yes" comment="active不提供的话， 默认yes，"/>
+				<instance name="payment02" templateId="paymentTpl" active="no" port="8011" dir="/app/payment_2" comment="可以覆盖指定端口和发布路径，从而支持一台服务器上部署同一service多个实例"/>
+			</nodes>
+		</server>
+	</servers>
+</application>

@@ -2,6 +2,7 @@
 include 'config/MailService.php';
 include 'Sys/Microservice.php';
 include 'Sys/Util/Email/SmtpSSL.php';
+include 'Sys/Util/Funcs.php';
 dl("swoole.so");
 /**
  * 微服务: 就一个发邮件的功能，配置在config/MailService.php中定义
@@ -79,10 +80,20 @@ class MailService extends \Sys\Microservice{
 }
 
 if(!empty($argv[1])){
-    $portListen = $argv[1]-0;
+    if(!empty($argv[2])){
+        if($argv[1]=='-p' || $argv[1]=='-port' || Sys\Util\Funcs::getIp($argv[1])){
+           $portListen = $argv[2]-0;
+        }
+    }else{
+        $portListen = $argv[1]-0;
+    }
 }else{
     $portListen = MAILSERVICE_PORT;
 }
+if(empty($portListen)){
+    die('port not set');
+}
+
 
 $srv = new MailService();
 $http = new swoole_http_server('0.0.0.0',$portListen);

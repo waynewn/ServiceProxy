@@ -203,6 +203,16 @@ nodes参数要求提供英文逗号分割的node名称列表
 
 `php src/Email.php &`
 
+`php src/Email.php 监听端口 &`
+
+`php src/Email.php -p 监听端口 &`
+
+`php src/Email.php 监听地址（暂时忽略，保留兼容）   监听端口 &`
+
 运行配置参看 [配置说明](docs/Config.md)
 
-项目没提供起停命令，只提供了个ping的
+start，stop，ping的脚本请根据情况自行编写，下面给出个ping的参考
+
+		#!/bin/bash
+		URL="http://127.0.0.1:$2/MailService/Broker/ping"
+		curl -s $URL

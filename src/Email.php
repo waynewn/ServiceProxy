@@ -94,7 +94,6 @@ if(empty($portListen)){
     die('port not set');
 }
 
-
 $srv = new MailService();
 $http = new swoole_http_server('0.0.0.0',$portListen);
 $http->set(array(

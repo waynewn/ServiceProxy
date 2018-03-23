@@ -54,7 +54,7 @@ class Base {
                 return false;
             }elseif($this->error[$flg]['num']==1){
                 return false;
-            }elseif($this->error[$flg]['timestamp']-$timestamp>EXPIRE_SECONDS_NODE_FAILED){
+            }elseif($timestamp-$this->error[$flg]['timestamp']>EXPIRE_SECONDS_NODE_FAILED){
                 unset($this->error[$flg]);
                 return false;
             }else{

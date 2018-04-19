@@ -16,17 +16,8 @@ $http->set(array(
     'task_worker_num'=>100,//task数量，因为主要是处理报警任务，所以100个足够了
 ));
 
-## 1. 微服务中间件系统运行自身配置
 
-配置文件是config/ServiceProxy.php
-
-可以将 config/sample/ServicePrxoy.php 复制过来做相应修改
-
-- 微服务中间件占用的服务模块名称 
-- proxy那里，对于投递失败的node，多少秒后代理请求时再次尝试投递，设置为0表示不延迟等待，下次立即重试
-- 最大并发task任务进程数量
-
-## 2. 系统自带的邮件发送微服务
+## 1. 系统自带的邮件发送微服务
 
 配置文件是 config/MailService.php
 
@@ -37,19 +28,34 @@ $http->set(array(
 - 邮件服务器在系统中的使用的服务器模块名（默认MailService）
 - 监听端口号
 
-## 3. 部署配置 
+## 2. 部署配置 
 
 可以将 config/sample/sample.xml 复制到config目录下改名改内容:
 
 （xml中comment属性用作写备忘注释用的）
 
-### 3.1 整个微服务环境配置
+### 2.1 整个微服务环境配置
 
 		<?xml version='1.0' encoding="utf-8"?>
 		<application version="1.0.1" centerIp='center的IP' centerPort='center的port' comment="comment是写的注释">
 			<log dir="" comment="日志存放路径，空表示全部记录到php的error_log" />
 
-### 3.2 监控管理配置
+	        <runtime_ini comment="重启后才能生效">
+	            <item name="MICRO_SERVICE_MODULENAME" value="ServiceProxy" comment="如果系统里已经存在名为 ServiceProxy 的项目了，这里改下"/>
+	            <item name="EXPIRE_SECONDS_NODE_FAILED" value="300" comment="投递失败的节点，多久后再次尝试"/>
+	            <item name="MAX_TASK_NUM" value="100" comment="最大可fork的task任务数"/>
+	            <item name="PROXY_TIMEOUT" value="1" comment="proxy代理请求时超时的设置（单位秒）"/>
+	            <item name="MAX_REWRITE" value="200" comment="整个系统最多支持多少条rewrite"/>
+	            <item name="MAX_SERVICES" value="1000" comment="整个系统最多支持多少个Service"/>
+	            <item name="MAX_NODE_PER_SERVICE" value="50" comment="每个Service最多有多少个node实例提供服务"/>
+	        </runtime_ini>
+
+- 微服务中间件占用的服务模块名称 
+- proxy那里，对于投递失败的node，多少秒后代理请求时再次尝试投递，设置为0表示不延迟等待，下次立即重试
+- 最大并发task任务进程数量等等
+
+
+### 2.2 监控管理配置
 
 提供代码里用到的配置，项目默认提供了一个发邮件的微服务，使用需要用到：
 
@@ -67,7 +73,7 @@ $http->set(array(
             </usergroup>
         </monitor>
 
-### 3.3 uri rewrite
+### 2.3 uri rewrite
 
 当需要替换指定接口时，这里指定(完整替换)
 
@@ -76,7 +82,7 @@ $http->set(array(
 			<rule from="/aa/bb/cc" to="/aa/bb/sayhi_proxy"/>
 		</rewrite>
 
-### 3.4 系统部署情况描述
+### 2.4 系统部署情况描述
 
 		<servers>
 			<server ip="192.168.4.240" proxyport="9002" comment="center要能访问到的地址">
@@ -98,7 +104,7 @@ $http->set(array(
 
 node有很多配置项，这里使用templateId指明是哪个模板，减少冗余，但可以重新指定监听端口和部署路径，从而在一台服务器上部署多个，配置模板参看下一节。
 
-### 3.5 node模板
+### 2.5 node模板
 
 		<node_templates>
 			<template id="SomeModuleTpl" port="8010" dir="/root/ServiceProxy" comment="部署的路径，用于替换命令定义中{dir}">

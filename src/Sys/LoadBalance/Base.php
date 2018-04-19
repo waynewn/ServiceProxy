@@ -7,7 +7,36 @@ namespace Sys\LoadBalance;
  * @author wangning
  */
 class Base {
-    protected $error=array();
+    protected $error=null;
+    public function __construct() {
+        $this->error = new \swoole_table(100);
+        $this->error->column('timestamp', \swoole_table::TYPE_INT, 8);       //1,2,4,8
+        $this->error->column('num', \swoole_table::TYPE_INT, 4);
+        $this->error->create();
+        
+        $this->counter = new \swoole_table(1);
+        $this->counter->column('dt', \swoole_table::TYPE_INT, 4);
+        $this->counter->column('index', \swoole_table::TYPE_INT, 4);
+        $this->counter->create();
+        $this->counter->set('0',array('dt'=>0,'index'=>0));
+        
+        $this->counter5Time = new \swoole_table($this->counterSize);
+        $this->counter5Time->column('dt', \swoole_table::TYPE_STRING, 12);
+        $this->counter5Time->create();
+        
+        $maxTotalNode = MAX_SERVICES * MAX_NODE_PER_SERVICE;
+        
+        for($i=0;$i<$this->counterSize;$i++){
+            $this->counter5Num[$i] = new \swoole_table($maxTotalNode);
+            $this->counter5Num[$i]->column('num', \swoole_table::TYPE_INT, 4);
+            $this->counter5Num[$i]->create();
+        }
+
+    }
+    
+    protected $counterSize = 5;
+
+
     /**
      * 记录问题节点
      * @param type $ip
@@ -23,17 +52,18 @@ class Base {
                 $this->error[$flg]['num']=1;
             }else{
 
-                if($this->error[$flg]['timestamp']-$timestamp>EXPIRE_SECONDS_NODE_FAILED){
+                if($timestamp-$this->error[$flg]['timestamp']>EXPIRE_SECONDS_NODE_FAILED){
                     $this->error[$flg]['num']=1;
                 }else{
                     $this->error[$flg]['num']++;
                 }
                 $this->error[$flg]['timestamp']=$timestamp;
             }
-            if(sizeof($this->error)>10){
+            if(count($this->error)>10){
                 foreach($this->error as $flg=>$r){
-                    if($this->error[$flg]['timestamp']-$timestamp>EXPIRE_SECONDS_NODE_FAILED){
-                        unset($this->error[$flg]);
+                    if($timestamp-$r['timestamp']>EXPIRE_SECONDS_NODE_FAILED){
+                        //unset($this->error[$flg]);
+                        $this->error->del($flg);
                     }
                 }
             }
@@ -73,11 +103,30 @@ class Base {
      */
     public function status()
     {
+        $i  = $this->getCounterIndex(time())+$this->counterSize;
+        
         return array(
-            'counter'=> $this->counter,
-            'error'=> $this->error
+            'counter'=> array_merge($this->getCounterIn($i),$this->getCounterIn($i-1),$this->getCounterIn($i-2)),
+            'error'=> $this->dumpSwooleTable($this->error),
+            //'debug'=>$this->dumpCounter(),
         );
     }
+    protected function getCounterIn($index)
+    {
+        $index = $index% $this->counterSize;
+        $time = $this->counter5Time->get($index,'dt');
+        if(empty($time)){
+            return array();
+        }else{
+            $ret = array();
+            foreach($this->counter5Num[$index] as $ipPort=>$r){
+                $ret[$ipPort]=$r['num'];
+            }
+            return array($time=>$ret);
+        }
+    }
+
+
     /**
      * 请求计数，保留最近5个记录（不是最近5分钟）
      * array(
@@ -90,15 +139,65 @@ class Base {
      * )
      * @var array 
      */
-    public $counter=array();
+    
+    protected $counter=null;
+    /**
+     * index 对应的时间(5个)
+     * @var swoole_table
+     */
+    protected $counter5Time=null;
+    /**
+     * index对应的5个swoole_table
+     * 每个table 记录 node对应的代理num
+     * @var array 
+     */
+    protected $counter5Num = array();
     /**
      * 记录一次分配
      */
     protected function addCounter($ip,$port,$timestamp)
     {
-        $this->counter[date('m-d H:i',$timestamp)][$ip.':'.$port]++;
-        if(sizeof($this->counter)>5){
-            array_shift($this->counter);
+        $flg = $ip.':'.$port;
+        $counterIndex = $this->getCounterIndex($timestamp);
+        if($this->counter5Num[$counterIndex]->exist($flg)){
+            $this->counter5Num[$counterIndex]->incr($flg,'num');
+        }else{
+            $this->counter5Num[$counterIndex]->set($flg,array('num'=>1));
+        }
+    }
+    
+    protected function dumpSwooleTable($o)
+    {
+        $ret = array();
+        foreach($o as $k=>$r){
+            $ret[$k]=$r;
+        }
+        return $ret;
+    }
+    public function dumpCounter()
+    {
+        $ret = array();
+        $ret['pointer']= $this->dumpSwooleTable($this->counter);
+        $ret['time'] = $this->dumpSwooleTable($this->counter5Time);
+        foreach($this->counter5Num as $k=>$o){
+            $ret['data'][$k] = $this->dumpSwooleTable($o);
+        }
+        return $ret;
+    }
+    
+    protected function getCounterIndex($timestamp)
+    {
+        $k = date('mdHi',$timestamp);
+        $cur = $this->counter->get(0);
+        if($cur['dt']!=$k){
+            $newIndex = ($cur['index']+1)%$this->counterSize;
+            $this->counter->set('0',array('dt'=>$k,'index'=>$newIndex));
+            $this->counter5Time[$newIndex]['dt']=date('m-d H:i',$timestamp);
+            $nextIndex = ($newIndex+1)%$this->counterSize;
+            \Sys\Util\Funcs::emptySwooleTable($this->counter5Num[$nextIndex]);
+            return $newIndex;
+        }else{
+            return $cur['index'];
         }
     }
 }

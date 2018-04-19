@@ -20,8 +20,8 @@ $worker_num=isset($cmd['-worker'])?($cmd['-worker']-0):0;
 if($worker_num==0){
     $worker_num=5;
 }
-if(isset($cmd['-h']) && isset($cmd['-p'])){
-    $proxy = new \Sys\Proxy($cmd['-h'], $cmd['-p']);
+if(isset($cmd['-center']) ){
+    $proxy = new \Sys\Proxy($cmd['-center']);
     if( $proxy->isConfigLoadedSuccessfully==false){
         die("get config failed,check ip and port\n ");
     }

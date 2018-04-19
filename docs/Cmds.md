@@ -112,7 +112,7 @@ proxy
 
 ### 3.8 启动proxy
 
-`php proxy.php -h 中央服务器ip -p 中央服务器监听端口 -worker 进程数 &`
+`php proxy.php -center 'http://centerip:centerport/ServiceProxy/center/getProxyConfig' -worker 进程数 &`
 
 proxy 需要代理请求，在结果返回之前，连接需要保持，所以进程数取决于 服务数量和服务器数量（如果一个完整业务请求涉及5个服务，又都在一台机器上，一次请求proxy就需要10个进程，在加上并发负载），取值参考： 最大复杂服务器数量 * 2 * 半秒内并发数 / proxy数量
 
@@ -216,3 +216,9 @@ start，stop，ping的脚本请根据情况自行编写，下面给出个ping的
 		#!/bin/bash
 		URL="http://127.0.0.1:$2/MailService/Broker/ping"
 		curl -s $URL
+
+### 3.11 打印proxy配置（dumpconfig）
+
+proxy
+
+`curl 'http://proxyIp:proxyPort/ServiceProxy/proxy/dumpconfig'`

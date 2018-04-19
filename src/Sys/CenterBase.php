@@ -109,6 +109,12 @@ class CenterBase extends CenterAlert{
         $tmp->setServiceMap($this->config->getServiceMap());
         $tmp->LogConfig = $this->config->LogConfig;
         $tmp->monitorConfig = $this->config->monitorConfig;
+        $tmp->envIni = $this->config->envIni;
+        $tmp->centerIp = $this->config->centerIp;
+        $tmp->centerPort=$this->config->centerPort;
+        foreach($this->config->nodeLocation as $nodename=>$ipport){
+            $tmp->nodename[ $ipport['ip'].':'.$ipport['port'] ]=$nodename;
+        }
         $tmp->setRewrite($this->config->getRewrite());
         return $tmp;
     }

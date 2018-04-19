@@ -10,13 +10,13 @@ include __DIR__.'/Config/ServiceLocation.php';
  */
 class Proxy extends ProxyAlert{
     protected $timeStartUp = 0;
-    public function __construct($centerIp,$centerPort) {
-        $tmp = $this->getConfig000($centerIp, $centerPort);
+    public function __construct($centerUrl) {
+        $tmp = $this->getConfig000($centerUrl);
         if($this->isConfigLoadedSuccessfully){
             $this->config=new \Sys\Config\ProxyConfig();
             $this->config->copyFrom($tmp);
-            $this->config->centerIp = $centerIp;
-            $this->config->centerPort = $centerPort;
+//            $this->config->centerIp = $centerIp;
+//            $this->config->centerPort = $centerPort;
             $this->log = new \Sys\Log\Txt($this->config->LogConfig, $this->config->myIp);
         }
         $this->timeStartUp = time();
@@ -28,7 +28,7 @@ class Proxy extends ProxyAlert{
         //todo : 报警
         //array('task'=>'rptErrNode','uri'=>$uri,'ip'=>$ip,'port'=>$port,'time'=>$request_time)
         if($data['task']=='rptErrNode'){
-            $this->onErr_ErrorNodeFound($data['uri'], $this->config->myIp, $data['ip'], $data['port'],$data['time']);
+            $this->onErr_ErrorNodeFound($data['uri'], $this->config->myIp, $data['ip'], $data['port'],$data['time'],$data['prepare4Task']);
         }
     }
     
@@ -54,10 +54,10 @@ class Proxy extends ProxyAlert{
     {
         return $this->config->myPort;
     }
-    protected function getConfig000($ip,$port){
+    protected function getConfig000($centerUrl){
         $this->isConfigLoadedSuccessfully=false;
         $curl = \Sys\Util\Curl::factory();
-        $ret = $curl->httpGet('http://'.$ip.':'.$port.'/'.MICRO_SERVICE_MODULENAME.'/center/getProxyConfig');
+        $ret = $curl->httpGet($centerUrl);//'http://'.$ip.':'.$port.'/'.MICRO_SERVICE_MODULENAME.'/center/getProxyConfig'
         if($curl->httpCodeLast!==200 || empty($ret)){
             die('try connect to center and get config failed httpCode='.$curl->httpCodeLast.' response='.$ret);
         }
@@ -238,7 +238,7 @@ class Proxy extends ProxyAlert{
                 $this->log->proxylogFirstTry($proxyRequestMd5Flg,$uri, $this->config->myIp, $ip_port->ip, $ip_port->port);
                 $this->log->proxylogArgs($proxyRequestMd5Flg, array(
                     'Cookie'=>$request->cookie,
-                    'QueryString'=>$request->server['query_string'],
+                    'QueryString'=>isset($request->server['query_string'])?$request->server['query_string']:'',
                     'Post_or_Raw'=>$post,
                 ));
                 $dt0 = microtime();
@@ -292,7 +292,7 @@ class Proxy extends ProxyAlert{
             }
             $cli->setCookies($cookies);
         }
-        $cli->set([ 'timeout' => 1]);//1秒超时
+        $cli->set([ 'timeout' => PROXY_TIMEOUT]);//1秒超时
         if(!empty($args4Post)){
             if(!is_array($args4Post)){
                 $headers["Content-Type"]="application/json";
@@ -328,7 +328,8 @@ class Proxy extends ProxyAlert{
     }
     protected function onProxyFaiedFirst($uri,$ip,$port,$request_time)
     {
-        $data = array('task'=>'rptErrNode','uri'=>$uri,'ip'=>$ip,'port'=>$port,'time'=>$request_time);
+        $uriWithNodeName = $uri.'('.$this->config->nodename[$ip.':'.$port].')';
+        $data = array('task'=>'rptErrNode','uri'=>$uriWithNodeName,'ip'=>$ip,'port'=>$port,'time'=>$request_time, 'prepare4Task'=>$this->onErr_prepare4task('rptErrNode'));
         try{
             if($this->swoole->task($data)===false){
                 $this->log->taskCreateFailed($data,'task pool is full');
@@ -337,11 +338,12 @@ class Proxy extends ProxyAlert{
             $this->log->taskCreateFailed($data, $ex->getMessage());
         }
         $this->config->markNodeDown($ip, $port, $request_time);
-        $this->log->errorNode($uri, $this->config->myIp, $ip, $port);
+        $this->log->errorNode($uriWithNodeName, $this->config->myIp, $ip, $port);
     }
     protected function onProxyFaiedAll($response,$uri,$ip,$port,$request_time)
     {
-        $data = array('task'=>'rptErrNode','uri'=>$uri,'ip'=>$ip,'port'=>$port,'time'=>$request_time);
+        $uriWithNodeName = $uri.'('.$this->config->nodename[$ip.':'.$port].')';
+        $data = array('task'=>'rptErrNode','uri'=>$uriWithNodeName,'ip'=>$ip,'port'=>$port,'time'=>$request_time,'prepare4Task'=>$this->onErr_prepare4task('rptErrNode'));
         try{
             if($this->swoole->task($data)===false){
                 $this->log->taskCreateFailed($data,'task pool is full');
@@ -350,7 +352,7 @@ class Proxy extends ProxyAlert{
             $this->log->taskCreateFailed($data, $ex->getMessage());
         }
         $this->config->markNodeDown($ip, $port, $request_time);
-        $this->log->errorNode($uri, $this->config->myIp, $ip, $port);
+        $this->log->errorNode($uriWithNodeName, $this->config->myIp, $ip, $port);
         $response->status(503);
     }
     protected function onRouteMissing($response,$uri)

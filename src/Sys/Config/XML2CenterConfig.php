@@ -21,9 +21,19 @@ class XML2CenterConfig {
         if (empty($xml)){
             throw new \ErrorException('not xml file');
         }
+        $centerConfig = new \Sys\Config\CenterConfig();
+        foreach( $xml->runtime_ini->children() as $rini){
+            $v = (string)$rini->attributes()->value;
+            $k = (string)$rini->attributes()->name;
+            if(!defined($k)){
+                define($k, $v);
+            }
+            $centerConfig->envIni[$k]=$v;
+        }
+
         $logConfig = new \Sys\Config\LogConfig();
         $logConfig->root = rtrim((string)$xml->log->attributes()->dir,'/');
-        
+
         $monitorConfig = new \Sys\Config\MonitorConfig();
         foreach( $xml->monitor->services->children() as $service){
             $monitorConfig->services[(string)$service->attributes()->type] = (string)$service->attributes()->uri;
@@ -31,7 +41,7 @@ class XML2CenterConfig {
         foreach( $xml->monitor->usergroup->children() as $ugrp){
             $monitorConfig->usersgroup[(string)$ugrp->attributes()->type] = (string)$ugrp->attributes()->data;
         }
-        $centerConfig = new \Sys\Config\CenterConfig();
+        
         $centerConfig->LogConfig = $logConfig;
         $centerConfig->monitorConfig = $monitorConfig;
         $app = $xml->attributes();

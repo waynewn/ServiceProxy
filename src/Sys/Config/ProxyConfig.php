@@ -7,6 +7,7 @@ include __DIR__.'/../LoadBalance/RoundRobin.php';
  * @author wangning
  */
 class ProxyConfig {
+    public $envIni=array();    
     /**
      * 
      * @param string $str
@@ -63,11 +64,6 @@ class ProxyConfig {
      */
     protected $loadBalance=null;
     /**
-     * 记录轮询位置
-     * @var type 
-     */
-    protected $serviceNext=array();
-    /**
      * 本机上部署了哪些节点，启动停止等管理命令的地址是多少
      * @var type 
      */
@@ -81,6 +77,7 @@ class ProxyConfig {
         ),
          */
     );
+    public $nodename=array();
     public $configVersion='0.0.0';
     /**
      * 
@@ -90,6 +87,14 @@ class ProxyConfig {
     {
         if($this->loadBalance===null){
             $this->loadBalance = new \Sys\LoadBalance\RoundRobin();
+        }
+        foreach($newObj->envIni as $k=>$v){
+            if(!defined($k)){
+                define($k,$v);
+            }
+        }
+        foreach($newObj->nodename as $k=>$v){
+            $this->nodename[$k]=$v;
         }
         $this->LogConfig = $newObj->LogConfig;
         $newObj->LogConfig=null;
@@ -102,45 +107,139 @@ class ProxyConfig {
         $this->configVersion=$newObj->configVersion;
         $this->nodeList = $newObj->nodeList;
     }
-
+    public function workAsGlobal()
+    {
+        $this->rewriteRuleIndex = new \swoole_table(1);
+        $this->rewriteRuleIndex->column('index', \swoole_table::TYPE_INT, 4);
+        $this->rewriteRuleIndex->create();
+        $this->rewriteRuleIndex->set('0',array('index'=>0));
+        
+        $this->serviceMapIndex = new \swoole_table(1);
+        $this->serviceMapIndex->column('index', \swoole_table::TYPE_INT, 4);
+        $this->serviceMapIndex->create();
+        $this->serviceMapIndex->set('0',array('index'=>0));
+        
+        $nodeLen = MAX_NODE_PER_SERVICE * 40;
+        
+        for($i=0;$i<2;$i++){
+            $this->rewriteRule[$i] = new \swoole_table(MAX_REWRITE);
+            $this->rewriteRule[$i]->column('to', \swoole_table::TYPE_STRING, 120);
+            $this->rewriteRule[$i]->create();
+            
+            $this->serviceMap[$i] = new \swoole_table(MAX_SERVICES);
+            $this->serviceMap[$i]->column('list', \swoole_table::TYPE_STRING, $nodeLen);
+            $this->serviceMap[$i]->create();
+        }
+        
+        $this->loadBalance->workAsGlobal();
+    }
     public function setRewrite($rewrite)
     {
-        $newIndex = ($this->rewriteRuleIndex+1)%2;
-        $this->rewriteRule[$newIndex]=$rewrite;
-        $this->rewriteRuleIndex=$newIndex;
+        $newIndex = ($this->getRewriteIndex()+1)%2;
+        if(is_scalar($this->rewriteRuleIndex)){
+            $this->rewriteRule[$newIndex]=$rewrite;
+            $this->rewriteRuleIndex=$newIndex;
+        }else{
+            \Sys\Util\Funcs::emptySwooleTable($this->rewriteRule[$newIndex]);
+            
+            foreach($rewrite as $from=>$to){
+                $this->rewriteRule[$newIndex]->set($from,array('to'=>$to));
+            }
+            $this->rewriteRuleIndex->set('0',array('index'=>$newIndex));
+        }
     }
-    public function getRewrite()
+    public function getRewrite($find=null)
     {
-        return $this->rewriteRule[$this->rewriteRuleIndex];
+        if(is_scalar($this->rewriteRuleIndex)){
+            if($find===null){
+                return $this->rewriteRule[$this->rewriteRuleIndex];
+            }else{
+                return isset($this->rewriteRule[$this->rewriteRuleIndex][$find])?$this->rewriteRule[$this->rewriteRuleIndex][$find]:$find;
+            }
+        }else{
+            $index = $this->rewriteRuleIndex->get('0','index');
+            if($find===null){
+                $ret = array();
+                foreach($this->rewriteRule[$index] as $k=>$r){
+                    $ret[$k]=$r['to'];
+                }
+                return $ret;
+            }else{
+                $tmp = $this->rewriteRule[$index]->get($find,'to');
+                return empty($tmp)?$find:$tmp;
+            }
+        }
+    }
+    public function getRewriteIndex()
+    {
+        if(is_scalar($this->rewriteRuleIndex)){
+            return $this->rewriteRuleIndex;
+        }else{
+            $this->rewriteRuleIndex->get('0','index');
+        }
     }
     public function setServiceMap($map)
     {
-        $newIndex = ($this->serviceMapIndex+1)%2;
-        $this->serviceMap[$newIndex]=$map;
-        $this->serviceMapIndex=$newIndex;
+        if(is_scalar($this->serviceMapIndex)){
+            $newIndex = ($this->serviceMapIndex+1)%2;
+            $this->serviceMap[$newIndex]=$map;
+            $this->serviceMapIndex=$newIndex;
+        }else{
+            $newIndex = ($this->serviceMapIndex->get('0','index')+1)%2;
+            \Sys\Util\Funcs::emptySwooleTable($this->serviceMap[$newIndex]);
+            
+            foreach($map as $from=>$r){
+                $this->serviceMap[$newIndex]->set($from,array('list'=> json_encode($r)));
+            }
+            $this->serviceMapIndex->set('0',array('index'=>$newIndex));
+        }
     }
-    public function getServiceMap()
+    public function getServiceMap($find=null)
     {
-        return $this->serviceMap[$this->serviceMapIndex];
+        if(is_scalar($this->serviceMapIndex)){
+            if($find===null){
+                return $this->serviceMap[$this->serviceMapIndex];
+            }elseif(isset($this->serviceMap[$this->serviceMapIndex][$find])){
+                return $this->serviceMap[$this->serviceMapIndex][$find];
+            }else{
+                return null;
+            }
+        }else{
+            $index = $this->serviceMapIndex->get('0','index');
+            if($find===null){
+                $ret = array();
+                foreach($this->serviceMap[$index] as $k=>$r){
+                    $ret[$k] = json_decode($r['list'],true);
+                }
+                return $ret;
+            }else{
+                $tmp = $this->serviceMap[$index]->get($find);
+                if(empty($tmp)){
+                    return null;
+                }else{
+                    return json_decode($tmp,true);
+                }
+            }
+        }
     }
     /**
      * 获取对应服务的实际地址，返回两个
-     * @param string $serviceCmd
+     * @param string $serviceCmd0
      * @param int $timestamp Description
      * @return \Sys\Config\ServiceLocation
      */
     public function getRouteFor($serviceCmd0,$timestamp)
     {
-
-        $serviceCmd = isset($this->rewriteRule[$this->rewriteRuleIndex][$serviceCmd0])?$this->rewriteRule[$this->rewriteRuleIndex][$serviceCmd0]:$serviceCmd0;
+        $serviceCmd = $this->getRewrite($serviceCmd0);
 
         $pos = strpos($serviceCmd, '/',1);
         $m  = trim(substr($serviceCmd, 0,$pos),'/');
         
-        if(!isset($this->serviceMap[$this->serviceMapIndex][$m])){
+        $serviceMap = $this->getServiceMap($m);
+        if(empty($serviceMap)){
             return null;
         }else{
-            $location = $this->loadBalance->chose($this->serviceMap[$this->serviceMapIndex][$m],$m,$timestamp);
+            $location = $this->loadBalance->chose($serviceMap,$m,$timestamp);
             if($location!=null){
                 $location->cmd=$serviceCmd;
                 return $location;

@@ -46,4 +46,15 @@ class Funcs {
         }
         return substr($ret,1);
     }
+    
+    public static function emptySwooleTable($obj)
+    {
+        $tmp=array();
+        foreach($obj as $k=>$r){
+            $tmp[]=$k;
+        }
+        foreach($tmp as $k){
+            $obj->del($k);
+        }
+    }
 }

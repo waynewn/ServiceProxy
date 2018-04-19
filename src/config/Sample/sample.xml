@@ -1,5 +1,14 @@
 <?xml version='1.0' encoding="utf-8"?>
 <application version="1.0.1" centerIp='192.168.4.240' centerPort='9001' comment="comment是写的注释">
+        <runtime_ini comment="重启后才能生效">
+            <item name="MICRO_SERVICE_MODULENAME" value="ServiceProxy" comment="如果系统里已经存在名为 ServiceProxy 的项目了，这里改下"/>
+            <item name="EXPIRE_SECONDS_NODE_FAILED" value="300" comment="投递失败的节点，多久后再次尝试"/>
+            <item name="MAX_TASK_NUM" value="100" comment="最大可fork的task任务数"/>
+            <item name="PROXY_TIMEOUT" value="1" comment="proxy代理请求时超时的设置（单位秒）"/>
+            <item name="MAX_REWRITE" value="200" comment="整个系统最多支持多少条rewrite"/>
+            <item name="MAX_SERVICES" value="1000" comment="整个系统最多支持多少个Service"/>
+            <item name="MAX_NODE_PER_SERVICE" value="50" comment="每个Service最多有多少个node实例提供服务"/>
+        </runtime_ini>
 	<log dir="/root/ServiceProxy/log" comment="日志存放路径" />
 	<monitor>
             <services >

@@ -6,6 +6,7 @@ namespace Sys\Config;
  * @author wangning
  */
 class CenterConfig {
+    public $envIni=array();
     /**
      *
      * @var \Sys\Config\LogConfig 
@@ -62,6 +63,7 @@ class CenterConfig {
      */
     public function copyFrom($newobj)
     {
+        $this->envIni = $newobj->envIni;
         $this->configVersion = $newobj->configVersion;
         $this->LogConfig = $newobj->LogConfig;
         $newobj->LogConfig = null;

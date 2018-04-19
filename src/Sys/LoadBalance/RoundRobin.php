@@ -29,11 +29,17 @@ class RoundRobin extends Base{
         }
         return Null;
     }
+    public function workAsGlobal() {
+        $this->moduleIndex = new \swoole_table(MAX_SERVICES);
+        $this->moduleIndex->column('index', \swoole_table::TYPE_INT, 4);
+        $this->moduleIndex->create();
+    }
+    
     /**
      * 记录轮询位置的数据，为方便调试，这里先给了public
      * @var array 
      */
-    public $moduleIndex=array();
+    protected $moduleIndex=null;
     /**
      * 获取轮询指针
      * @param string $modulename
@@ -41,10 +47,13 @@ class RoundRobin extends Base{
      */
     private function getPointer($modulename)
     {
-        if(!isset($this->moduleIndex[$modulename])){
-            $this->moduleIndex[$modulename]=rand(1,99);
+        $index = $this->moduleIndex->incr($modulename,'index');
+        if($index>=10000000){
+            if($index%1000==0){
+                $this->moduleIndex->set($modulename,array('index'=>1));
+            }
         }
-        return $this->moduleIndex[$modulename]++;
+        return $index;
     }
     
 

@@ -1,5 +1,4 @@
 <?php
-include 'config/ServiceProxy.php';
 include 'Sys/Util/Funcs.php';
 include 'Sys/Config/ProxyConfig.php';
 include 'Sys/Config/CenterConfig.php';

@@ -85,13 +85,13 @@ class ProxyConfig {
      */
     public function copyFrom($newObj)
     {
-        if($this->loadBalance===null){
-            $this->loadBalance = new \Sys\LoadBalance\RoundRobin();
-        }
         foreach($newObj->envIni as $k=>$v){
             if(!defined($k)){
                 define($k,$v);
             }
+        }
+        if($this->loadBalance===null){
+        	$this->loadBalance = new \Sys\LoadBalance\RoundRobin();
         }
         foreach($newObj->nodename as $k=>$v){
             $this->nodename[$k]=$v;

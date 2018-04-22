@@ -92,10 +92,15 @@ class ProxyConfig {
         }
         if($this->loadBalance===null){
         	$this->loadBalance = new \Sys\LoadBalance\RoundRobin();
+            if(!is_scalar($this->rewriteRuleIndex)){
+                $this->loadBalance->workAsGlobal();
+            }
         }
-        foreach($newObj->nodename as $k=>$v){
-            $this->nodename[$k]=$v;
+        if(!empty($newObj->nodename)){
+            $this->setNodename($newObj->nodename);
         }
+        $this->centerIp = $newObj->centerIp;
+        $this->centerPort = $newObj->centerPort;
         $this->LogConfig = $newObj->LogConfig;
         $newObj->LogConfig=null;
         $this->monitorConfig = $newObj->monitorConfig;
@@ -107,6 +112,43 @@ class ProxyConfig {
         $this->configVersion=$newObj->configVersion;
         $this->nodeList = $newObj->nodeList;
     }
+    
+    public function setNodename($arr)
+    {
+        if(is_scalar($this->rewriteRuleIndex)){
+            foreach($arr as $k=>$v){
+                $this->nodename[$k]=$v;
+            }
+        }else{
+            if(is_array($this->nodename)){
+                $this->nodename = new \swoole_table(MAX_SERVICES * MAX_NODE_PER_SERVICE);
+                $this->nodename->column('name', \swoole_table::TYPE_STRING, 64);
+                $this->nodename->create();
+            }
+            foreach($arr as $k=>$v){
+                $this->nodename->set($k, array('name'=>$v));
+            }
+        }
+    }
+    
+    public function getNodename($ipWithPort)
+    {
+        if(is_array($this->nodename)){
+            if(isset($this->nodename['$ipWithPort'])){
+                return $this->nodename['$ipWithPort'];
+            }else{
+                return $ipWithPort;
+            }
+        }else{
+            $tmp = $this->nodename->get($ipWithPort,'name');
+            if(!empty($tmp)){
+                return $tmp;
+            }else{
+                return $ipWithPort;
+            }
+        }
+    }
+    
     public function workAsGlobal()
     {
         $this->rewriteRuleIndex = new \swoole_table(1);
@@ -130,8 +172,6 @@ class ProxyConfig {
             $this->serviceMap[$i]->column('list', \swoole_table::TYPE_STRING, $nodeLen);
             $this->serviceMap[$i]->create();
         }
-        
-        $this->loadBalance->workAsGlobal();
     }
     public function setRewrite($rewrite)
     {
@@ -213,11 +253,15 @@ class ProxyConfig {
                 }
                 return $ret;
             }else{
-                $tmp = $this->serviceMap[$index]->get($find);
+                $tmp = $this->serviceMap[$index]->get($find,'list');
                 if(empty($tmp)){
                     return null;
                 }else{
-                    return json_decode($tmp,true);
+					if(is_array($tmp)){
+                        return $tmp;
+                    }else{
+                        return json_decode($tmp,true);
+                    }
                 }
             }
         }

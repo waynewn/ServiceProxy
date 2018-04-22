@@ -103,7 +103,16 @@ class Txt {
     public function proxylogResult($md5FLG,$serviceapi,$fromIP,$toIP,$toPort,$dur,$ret)
     {
         $this->_log('proxy', "$md5FLG $fromIP -> $toIP:$toPort/$serviceapi CONSUMING_TIME = $dur" );
-        $this->_log('proxy', "$md5FLG RESULT = ". (is_scalar($ret)?$ret: json_encode($ret)));
+        if(is_scalar($ret)){
+            if(sizeof($ret)>5000){
+                $this->_log('proxy', "$md5FLG RESULT = (first1k-base64ed)". base64_encode(substr($ret,0,1000)));
+            }else{
+                $this->_log('proxy', "$md5FLG RESULT = ". $ret);
+            }
+        }else{
+            $this->_log('proxy', "$md5FLG RESULT = ". json_encode($ret));
+        }
+        
         return;
     }    
     /**

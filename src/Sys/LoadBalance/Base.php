@@ -34,7 +34,7 @@ class Base {
 
     }
     
-    protected $counterSize = 5;
+    protected $counterSize = 3;
 
 
     /**
@@ -192,7 +192,7 @@ class Base {
         if($cur['dt']!=$k){
             $newIndex = ($cur['index']+1)%$this->counterSize;
             $this->counter->set('0',array('dt'=>$k,'index'=>$newIndex));
-            $this->counter5Time[$newIndex]['dt']=date('m-d H:i',$timestamp);
+            $this->counter5Time->set($newIndex,array('dt'=>date('m-d H:i',$timestamp)));
             $nextIndex = ($newIndex+1)%$this->counterSize;
             \Sys\Util\Funcs::emptySwooleTable($this->counter5Num[$nextIndex]);
             return $newIndex;

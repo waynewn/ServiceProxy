@@ -13,7 +13,13 @@ class Proxy extends ProxyAlert{
     public function __construct($centerUrl) {
         $tmp = $this->getConfig000($centerUrl);
         if($this->isConfigLoadedSuccessfully){
+            foreach($tmp->envIni as $k=>$v){
+                if(!defined($k)){
+                    define($k,$v);
+                }
+            }
             $this->config=new \Sys\Config\ProxyConfig();
+            $this->config->workAsGlobal();
             $this->config->copyFrom($tmp);
 //            $this->config->centerIp = $centerIp;
 //            $this->config->centerPort = $centerPort;
@@ -241,24 +247,24 @@ class Proxy extends ProxyAlert{
                     'QueryString'=>isset($request->server['query_string'])?$request->server['query_string']:'',
                     'Post_or_Raw'=>$post,
                 ));
-                $dt0 = microtime();
+                $dt0 = microtime(true);
                 $ret = $this->_proxy2($ip_port->ip==$this->config->myIp?'127.0.0.1':$ip_port->ip, $ip_port->port, $url, $post,$request->cookie,$response);
-                $this->log->proxylogResult($proxyRequestMd5Flg, $uri,$this->config->myIp,$ip_port->ip, $ip_port->port, sprintf('%.2f',(microtime()-$dt0)*1000),$ret);
+                $this->log->proxylogResult($proxyRequestMd5Flg, $uri,$this->config->myIp,$ip_port->ip, $ip_port->port, sprintf('%.2f',(microtime(true)-$dt0)*1000),$ret);
             } catch (\ErrorException $ex) {
                 $again = $this->config->getRouteFor($uri,$request_time);
-                if($again->ip!=$ip_port->ip && $again->port!=$ip_port->port){
+                if($again->ip!=$ip_port->ip || $again->port!=$ip_port->port){
                     $this->onProxyFaiedFirst( $uri,$ip_port->ip,$ip_port->port,$request_time);
                     try{
                         $this->log->proxylogTryMore($proxyRequestMd5Flg,$uri, $this->config->myIp, $ip_port->ip, $ip_port->port);
-                        $dt0 = microtime();
+                        $dt0 = microtime(true);
                         $ret = $this->_proxy2($again->ip==$this->config->myIp?'127.0.0.1':$again->ip, $again->port, $url, $post,$request->cookie,$response);
-                        $this->log->proxylogResult($proxyRequestMd5Flg, $uri,$this->config->myIp,$again->ip, $again->port,sprintf('%.2f',(microtime()-$dt0)*1000),$ret);
+                        $this->log->proxylogResult($proxyRequestMd5Flg, $uri,$this->config->myIp,$again->ip, $again->port,sprintf('%.2f',(microtime(true)-$dt0)*1000),$ret);
                     } catch (\ErrorException $ex) {
-                        $this->log->proxylogResult($proxyRequestMd5Flg, $uri,$this->config->myIp,$again->ip, $again->port,sprintf('%.2f',(microtime()-$dt0)*1000),'Failed:'.$ex->getMessage());
+                        $this->log->proxylogResult($proxyRequestMd5Flg, $uri,$this->config->myIp,$again->ip, $again->port,sprintf('%.2f',(microtime(true)-$dt0)*1000),'Failed:'.$ex->getMessage());
                         $this->onProxyFaiedAll($response, $uri,$again->ip,$again->port,$request_time);
                     }
                 }else{
-                    $this->log->proxylogResult($proxyRequestMd5Flg,$uri,$this->config->myIp,$ip_port->ip, $ip_port->port, sprintf('%.2f',(microtime()-$dt0)*1000), 'Failed:'.$ex->getMessage());
+                    $this->log->proxylogResult($proxyRequestMd5Flg,$uri,$this->config->myIp,$ip_port->ip, $ip_port->port, sprintf('%.2f',(microtime(true)-$dt0)*1000), 'Failed:'.$ex->getMessage());
                     $this->onProxyFaiedAll($response, $uri,$ip_port->ip,$ip_port->port,$request_time);
                 }
             }
@@ -277,7 +283,7 @@ class Proxy extends ProxyAlert{
      */
     protected function _proxy2($ip,$port,$uriWithQueryString,$args4Post,$cookies,$response)
     {
-        $this->log->trace("$ip:$port/$uriWithQueryString");
+        $this->log->trace("$ip:$port/$uriWithQueryString ". $this->config->getNodename("$ip:$port"));
         $cli = new \Swoole\Coroutine\Http\Client($ip, $port);
         $headers = array(
 //            'Host' => "localhost",
@@ -322,14 +328,16 @@ class Proxy extends ProxyAlert{
         if($responseType=='application/json'){
             $this->returnJsonResponse($response, $ret);
         }else{
+            $response->header("Content-Type", $responseType);
             $this->returnTxtResponse($response, $ret);
         }
         return $ret;
     }
-    protected function onProxyFaiedFirst($uri,$ip,$port,$request_time)
+        protected function onProxyFaiedFirst($uri,$ip,$port,$request_time)
     {
-        $uriWithNodeName = $uri.'('.$this->config->nodename[$ip.':'.$port].')';
-        $data = array('task'=>'rptErrNode','uri'=>$uriWithNodeName,'ip'=>$ip,'port'=>$port,'time'=>$request_time, 'prepare4Task'=>$this->onErr_prepare4task('rptErrNode'));
+        $uriWithNodeName = $uri.'('.$this->config->getNodename($ip.':'.$port).')';
+        $data = array('task'=>'rptErrNode','uri'=>$uriWithNodeName,'ip'=>$ip,'port'=>$port,'time'=>$request_time,);
+        $data['prepare4Task']=$this->onErr_prepare4task('rptErrNode',$data);
         try{
             if($this->swoole->task($data)===false){
                 $this->log->taskCreateFailed($data,'task pool is full');
@@ -342,8 +350,9 @@ class Proxy extends ProxyAlert{
     }
     protected function onProxyFaiedAll($response,$uri,$ip,$port,$request_time)
     {
-        $uriWithNodeName = $uri.'('.$this->config->nodename[$ip.':'.$port].')';
-        $data = array('task'=>'rptErrNode','uri'=>$uriWithNodeName,'ip'=>$ip,'port'=>$port,'time'=>$request_time,'prepare4Task'=>$this->onErr_prepare4task('rptErrNode'));
+        $uriWithNodeName = $uri.'('.$this->config->getNodename($ip.':'.$port).')';
+        $data = array('task'=>'rptErrNode','uri'=>$uriWithNodeName,'ip'=>$ip,'port'=>$port,'time'=>$request_time,);
+        $data['prepare4Task'] = $this->onErr_prepare4task('rptErrNode',$data);
         try{
             if($this->swoole->task($data)===false){
                 $this->log->taskCreateFailed($data,'task pool is full');

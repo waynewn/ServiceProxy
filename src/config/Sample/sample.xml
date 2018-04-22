@@ -6,8 +6,8 @@
             <item name="MAX_TASK_NUM" value="100" comment="最大可fork的task任务数"/>
             <item name="PROXY_TIMEOUT" value="1" comment="proxy代理请求时超时的设置（单位秒）"/>
             <item name="MAX_REWRITE" value="200" comment="整个系统最多支持多少条rewrite"/>
-            <item name="MAX_SERVICES" value="1000" comment="整个系统最多支持多少个Service"/>
-            <item name="MAX_NODE_PER_SERVICE" value="50" comment="每个Service最多有多少个node实例提供服务"/>
+            <item name="MAX_SERVICES" value="1000" comment="整个系统最多支持多少个ServiceModule"/>
+            <item name="MAX_NODE_PER_SERVICE" value="50" comment="每个ServiceModule最多有多少个node实例提供服务"/>
         </runtime_ini>
 	<log dir="/root/ServiceProxy/log" comment="日志存放路径" />
 	<monitor>

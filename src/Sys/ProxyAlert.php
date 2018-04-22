@@ -14,10 +14,10 @@ class ProxyAlert  extends Microservice{
      * @var \Sys\Config\ProxyConfig
      */
     public $config;
-	protected function onErr_prepare4task($func)
+	protected function onErr_prepare4task($func,$data)
 	{
 		if($func=='rptErrNode'){
-			$tmp = $this->config->getRouteFor($this->config->monitorConfig->services['email'],$request_time);
+			$tmp = $this->config->getRouteFor($this->config->monitorConfig->services['email'],$data['time']);
 			return json_decode(json_encode($tmp),true);
 		}else{
 			return null;

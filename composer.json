@@ -1,0 +1,12 @@
+{
+    "name": "steady-as-hill/service-proxy",
+    "description": "micro-service proxy and center-manage system, based on swoole",
+    "keywords":         ["micro-service"],
+    "license":          "MIT",
+    "require": {
+
+    },
+    "autoload": {
+
+    }
+}

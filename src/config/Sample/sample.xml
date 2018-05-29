@@ -8,6 +8,9 @@
             <item name="MAX_REWRITE" value="200" comment="整个系统最多支持多少条rewrite"/>
             <item name="MAX_SERVICES" value="1000" comment="整个系统最多支持多少个ServiceModule"/>
             <item name="MAX_NODE_PER_SERVICE" value="50" comment="每个ServiceModule最多有多少个node实例提供服务"/>
+        <item name="HEADER_TRANSFER" value="" comment="英文逗号分割的需要代理透传的header项，x-forwarded-for已经内置加上了"/>
+            <item name="CENTER_TIMER_MINUTE" value="" comment="center定时任务的时间间隔（分钟）,"/>
+            
         </runtime_ini>
 	<log dir="/root/ServiceProxy/log" comment="日志存放路径" />
 	<monitor>

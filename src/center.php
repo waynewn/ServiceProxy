@@ -1,13 +1,11 @@
 <?php
 include 'Sys/Util/Funcs.php';
-include 'Sys/Config/ProxyConfig.php';
-include 'Sys/Config/CenterConfig.php';
-include 'Sys/Config/MonitorConfig.php';
-include 'Sys/Config/LogConfig.php';
 include 'Sys/Config/XML2CenterConfig.php';
 include 'Sys/Center.php';
 include 'Sys/Log/Txt.php';
-dl("swoole.so");
+if(!class_exists('swoole_http_server',false)){
+    dl("swoole.so");
+}
 
 $cmd = \Sys\Util\Funcs::parseCmdArg($argv);
 $worker_num=isset($cmd['-worker'])?($cmd['-worker']-0):0;
@@ -38,7 +36,7 @@ if(isset($cmd['-t'])){
 }else{
     die("unknown cmds, use -h for help\n ");
 }
-$http = new swoole_http_server('0.0.0.0',$center->getMyPort());
+$http = new swoole_http_server($center->getMyIp(),$center->getMyPort());
 $http->set(array(
     'worker_num' =>$worker_num,
     'task_worker_num'=>MAX_TASK_NUM,//因为主要是处理报警任务，所以100个足够了
@@ -46,15 +44,36 @@ $http->set(array(
     'daemonize' => true,
 //    'backlog' => 128,
 ));
+if($center->getMyIp()!='127.0.0.1'){
+    $http->listen('127.0.0.1',$center->getMyPort(),SWOOLE_SOCK_TCP);
+}
 $center->initSwooleServer($http);
-$http->on("request", function ($request, $response) use ($center) {
-    $center->dispatch($request, $response);
-});
+$http->on("start", array($center,'onListenStart'));
+$http->on("request", array ($center,'dispatch'));
 $http->on("task", function ($serv, $task_id, $src_worker_id, $data) use ($center){
-    $center->onSwooleTask($serv, $task_id, $src_worker_id, $data);
+    $center->taskRunning_inc();
+    try{
+        $ret = $center->onSwooleTask($serv, $task_id, $src_worker_id, $data);
+        if(empty($ret)){
+            $center->taskRunning_dec();
+        }else{
+            return $ret;
+        }
+    }catch(\ErrorException $e){
+        $ret = $center->onTaskError($e,$data,false);
+        if(empty($ret)){
+            $center->taskRunning_dec();
+        }else{
+            return $ret;
+        }
+    }    
 }); 
-$http->on("finish", function ($serv,$task_id, $data) use ($center){
-    //error_log("task-------------------------------$data finished");
+$http->on("finish", function ($serv,$task_id, $data) use ($center){ 
+    try{
+        $center->onSwooleTaskReturn($serv, $task_id, $data);
+    }catch(\ErrorException $ex){
+        $center->onTaskError($ex,$data,true);
+    }
+    $center->taskRunning_dec();
 }); 
-$center->onListenStart();
 $http->start();

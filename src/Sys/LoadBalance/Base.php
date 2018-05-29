@@ -9,34 +9,18 @@ namespace Sys\LoadBalance;
 class Base {
     protected $error=null;
     public function __construct() {
+        $maxTotalNode = MAX_SERVICES * MAX_NODE_PER_SERVICE;
+        $this->newCounter = new \swoole_table($maxTotalNode);
+        $this->newCounter->column('sum', \swoole_table::TYPE_INT, 8); 
+        $this->newCounter->column('cur', \swoole_table::TYPE_INT, 8); 
+        $this->newCounter->create();
+        
         $this->error = new \swoole_table(100);
         $this->error->column('timestamp', \swoole_table::TYPE_INT, 8);       //1,2,4,8
         $this->error->column('num', \swoole_table::TYPE_INT, 4);
         $this->error->create();
         
-        $this->counter = new \swoole_table(1);
-        $this->counter->column('dt', \swoole_table::TYPE_INT, 4);
-        $this->counter->column('index', \swoole_table::TYPE_INT, 4);
-        $this->counter->create();
-        $this->counter->set('0',array('dt'=>0,'index'=>0));
-        
-        $this->counter5Time = new \swoole_table($this->counterSize);
-        $this->counter5Time->column('dt', \swoole_table::TYPE_STRING, 12);
-        $this->counter5Time->create();
-        
-        $maxTotalNode = MAX_SERVICES * MAX_NODE_PER_SERVICE;
-        
-        for($i=0;$i<$this->counterSize;$i++){
-            $this->counter5Num[$i] = new \swoole_table($maxTotalNode);
-            $this->counter5Num[$i]->column('num', \swoole_table::TYPE_INT, 4);
-            $this->counter5Num[$i]->create();
-        }
-
     }
-    
-    protected $counterSize = 3;
-
-
     /**
      * 记录问题节点
      * @param type $ip
@@ -94,78 +78,80 @@ class Base {
             return false;
         }
     }
+
+    protected $newCounter=null;
+    public function onProxyStart($location)
+    {
+        $flg = $location->ip.':'.$location->port;
+        if($this->newCounter->exist($flg)){
+            $new = $this->newCounter->incr($flg,'sum',1);
+            if($new>8000111110000011111){
+                $this->newCounter->decr($flg,'sum',20111110000011111);
+            }
+            $this->newCounter->incr($flg,'cur',1);
+        }else{
+            $this->newCounter->set($flg,array('sum'=>1,'cur=>1'));
+        }
+    }
+    /**
+     * 
+     * @param type $location
+     */
+    public function onProxyEnd($location)
+    {
+        $flg = $location->ip.':'.$location->port;
+        $this->newCounter->decr($flg,'cur',1);
+    }
+    
+    public function proxyCounterReset()
+    {
+        $ret = array();
+        foreach($this->newCounter as $k=>$r){
+            if($r['sum']>0){
+                $ret[$k]=$r['sum'];
+                $this->newCounter->decr($k,'sum',$r['sum']);
+            }
+        }
+        return $ret;
+    }
     /**
      * 获取状态
      * array(
-     * 
+    'counter' =>  array (
+      '05-28 13:17' =>  array (
+        '10.30.232.9:8881' => 1,
+        '10.30.232.9:8882' => 1,
+      ),
+
+    ),
+    'error' =>  array (
+      '10.30.232.9:8881' => array (
+        'timestamp' => 1527482691,
+        'num' => 1,
+      ),
+      '10.30.232.9:8882' => array (
+        'timestamp' => 1527482650,
+        'num' => 1,
+      ),
+    ),
+
      * )
      * @return array 
      */
     public function status()
     {
-        $i  = $this->getCounterIndex(time())+$this->counterSize;
-        
+        $counter = array();
+        foreach($this->newCounter as $ipPort=>$r){
+            if($r['cur']>0){
+                $counter[$ipPort]=$r['cur'];
+            }
+        }
         return array(
-            'counter'=> array_merge($this->getCounterIn($i),$this->getCounterIn($i-1),$this->getCounterIn($i-2)),
+            'counter'=> array(date('m-d H:i')=>$counter),
             'error'=> $this->dumpSwooleTable($this->error),
             //'debug'=>$this->dumpCounter(),
         );
     }
-    protected function getCounterIn($index)
-    {
-        $index = $index% $this->counterSize;
-        $time = $this->counter5Time->get($index,'dt');
-        if(empty($time)){
-            return array();
-        }else{
-            $ret = array();
-            foreach($this->counter5Num[$index] as $ipPort=>$r){
-                $ret[$ipPort]=$r['num'];
-            }
-            return array($time=>$ret);
-        }
-    }
-
-
-    /**
-     * 请求计数，保留最近5个记录（不是最近5分钟）
-     * array(
-     *      '时间（精确到分钟）'=>array(
-     *          'ip:port'=>123,
-     *      ),
-     *      '时间（精确到分钟）'=>array(
-     *          'ip:port'=>123,
-     *      )
-     * )
-     * @var array 
-     */
-    
-    protected $counter=null;
-    /**
-     * index 对应的时间(5个)
-     * @var swoole_table
-     */
-    protected $counter5Time=null;
-    /**
-     * index对应的5个swoole_table
-     * 每个table 记录 node对应的代理num
-     * @var array 
-     */
-    protected $counter5Num = array();
-    /**
-     * 记录一次分配
-     */
-    protected function addCounter($ip,$port,$timestamp)
-    {
-        $flg = $ip.':'.$port;
-        $counterIndex = $this->getCounterIndex($timestamp);
-        if($this->counter5Num[$counterIndex]->exist($flg)){
-            $this->counter5Num[$counterIndex]->incr($flg,'num');
-        }else{
-            $this->counter5Num[$counterIndex]->set($flg,array('num'=>1));
-        }
-    }
-    
     protected function dumpSwooleTable($o)
     {
         $ret = array();
@@ -173,31 +159,5 @@ class Base {
             $ret[$k]=$r;
         }
         return $ret;
-    }
-    public function dumpCounter()
-    {
-        $ret = array();
-        $ret['pointer']= $this->dumpSwooleTable($this->counter);
-        $ret['time'] = $this->dumpSwooleTable($this->counter5Time);
-        foreach($this->counter5Num as $k=>$o){
-            $ret['data'][$k] = $this->dumpSwooleTable($o);
-        }
-        return $ret;
-    }
-    
-    protected function getCounterIndex($timestamp)
-    {
-        $k = date('mdHi',$timestamp);
-        $cur = $this->counter->get(0);
-        if($cur['dt']!=$k){
-            $newIndex = ($cur['index']+1)%$this->counterSize;
-            $this->counter->set('0',array('dt'=>$k,'index'=>$newIndex));
-            $this->counter5Time->set($newIndex,array('dt'=>date('m-d H:i',$timestamp)));
-            $nextIndex = ($newIndex+1)%$this->counterSize;
-            \Sys\Util\Funcs::emptySwooleTable($this->counter5Num[$nextIndex]);
-            return $newIndex;
-        }else{
-            return $cur['index'];
-        }
     }
 }

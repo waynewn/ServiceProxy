@@ -48,6 +48,8 @@ $http->set(array(
 	            <item name="MAX_REWRITE" value="200" comment="整个系统最多支持多少条rewrite"/>
 	            <item name="MAX_SERVICES" value="1000" comment="整个系统最多支持多少个Service"/>
 	            <item name="MAX_NODE_PER_SERVICE" value="50" comment="每个Service最多有多少个node实例提供服务"/>
+                    <item name="HEADER_TRANSFER" value="" comment="英文逗号分割的需要代理透传的header项，x-forwarded-for已经内置加上了"/>
+                    <item name="CENTER_TIMER_MINUTE" value="" comment="center定时任务的时间间隔（分钟）,统计的各个proxy代理任务数量暂时记录在center_sys里"/>
 	        </runtime_ini>
 
 - 微服务中间件占用的服务模块名称 
@@ -133,4 +135,23 @@ node有很多配置项，这里使用templateId指明是哪个模板，减少冗
 
 - 默认部署路径，用于拼接3个预定义可通过center调用的命令的路径
 - 三个预定义命令，用于通过center启动、停止、健康检查node。运作方式：center向proxy发指令要求执行指定节点的指定命令，proxy找到对应的实际的命令，以 "/root/ServiceProxy/src/stop.sh ip node监听端口" 的格式调用并将结果返回给center
-- 说明改node都实现了哪些service module
+- 说明改node都实现了哪些service module- 最后强调一下，shell脚本最后要有输出，没输出会干等到超时
+
+## 3 分级部署
+
+目前没做安全限制（比如ip白名单），出于安全考虑，经常需要把对外的对内的业务分开，可以使用如下方案：
+
+部署两个层：
+
+**对内的**
+
+一个专属center，对应配置里登记所有服务，部署所有proxy
+	
+**对外的**
+
+一个专属center, 对应的配置里：
+
+* 登记几个入口proxy，该proxy所在服务器不部署任何ServiceNode
+* 登记提供对外接口的ServiceNode，注意，这里配置时，proxy server端口要配个无效的，端口有效的那个proxy由对内的那一套在管理
+
+这样一来，这个对外环境里的proxy，要么不存在，要么只知道对外接口。

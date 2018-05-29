@@ -1,6 +1,9 @@
 <?php
 namespace Sys;
-use Sys\Util as util;
+include __DIR__.'/Config/ProxyConfig.php';
+include __DIR__.'/Config/CenterConfig.php';
+include __DIR__.'/Config/MonitorConfig.php';
+include __DIR__.'/Config/LogConfig.php';
 include __DIR__.'/CenterReport.php';
 
 /**
@@ -12,11 +15,27 @@ class Center extends CenterReport{
 
     public function dispatch($request,$response)
     {
-        $this->log->trace('dispatch '.$request->server['request_uri']);
+        $remoteAddr = $request->server['remote_addr'];
+        if($remoteAddr!=$this->config->centerIp && $remoteAddr!='127.0.0.1' && !isset($this->config->proxy[$remoteAddr])){
+            $response->status(404);
+            return;
+        }
+        $this->log->managelog('dispatch '.$request->server['request_uri'].'?'.json_encode($request->get));        
+        if(parent::dispatch($request, $response)==true){
+            return;
+        }
+
         if($this->dispatchReports($request, $response)==true){
             return;
         }
         switch ($request->server['request_uri']){
+            case '/'.MICRO_SERVICE_MODULENAME.'/center/startTimer':
+                error_log('WNWN:onListenStart....................2');
+                if(defined('CENTER_TIMER_MINUTE') && CENTER_TIMER_MINUTE>0){
+                    swoole_timer_tick(CENTER_TIMER_MINUTE*60*1000,array($this,'onTimer'),null);
+                }
+                
+                break;            
             //proxy 来要自己的配置文件
             case '/'.MICRO_SERVICE_MODULENAME.'/center/getProxyConfig':
                 $this->getProxyConfig($request, $response);
@@ -51,8 +70,7 @@ class Center extends CenterReport{
                 $this->nodecmd($request, $response);
                 break;
             case '/'.MICRO_SERVICE_MODULENAME.'/center/shutdown':
-                $this->swoole->shutdown();
-                $this->returnJsonResponse($response,array('code'=>0,'msg'=>'shutdown command sent'));
+                $this->nodeShutdown($response);
                 break;
             
             case '/'.MICRO_SERVICE_MODULENAME.'/center/nodeDeactive'://nodes=xx,yy
@@ -154,7 +172,6 @@ class Center extends CenterReport{
             'nodename'=>$this->getReq($request, 'node'),
             'nodecmd'=>$this->getReq($request, 'cmd'),
         );
-        $this->log->managelog(__FUNCTION__, $cmd);
         if(!isset($this->config->nodeLocation[$cmd['nodename']])){
             return $this->returnJsonResponse($response, array('code'=>404,'msg'=>'node with name:'.$cmd['nodename'].' not found'));
         }else{
@@ -179,7 +196,6 @@ class Center extends CenterReport{
      */
     protected function broadcast($request, $response)
     {
-        $this->log->managelog(__FUNCTION__);
         $clients = \Sys\Coroutione\Clients::create(5);
         $ret = array('time_start'=>date('m-d H:i:s',$request->server['request_time']),'time_end'=>'');
         foreach($this->config->proxy as $proxyStr)

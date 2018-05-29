@@ -7,13 +7,15 @@ namespace Sys\Util;
  * @author wangning
  */
 class Funcs {
-    public static function parseCmdArg($argv)
+    public static function parseCmdArg($argv,$usage=null)
     {
         $cmd = array();
         $len = sizeof($argv);
-        $usage="usage: php xxxx.php args\n"
+        if($usage===null){
+            $usage="usage: php xxxx.php args\n"
                 ."CMD in CENTER:\n\tphp center.php -t config-file       check file\n\t-c config-file       run center with config-file\n\t-worker num        worker-thread num,default is 5\n"
                 ."CMD in PROXY:\n\tphp proxy.php -h center-server-ip -p center-server-port \n\t-worker num        worker-thread num,default is 5\n";
+        }
         if($argv[1]=='--help'){
             die($usage);
         }

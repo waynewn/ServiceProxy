@@ -1,5 +1,7 @@
 # 系统设计
 
+作为一个微服务器中间件，需求变更很少，效率要求高，所以没有使用外部依赖，全部基于swoole提供的基础类函数完成。
+
 **文件目录说明**
 
 docs 存放说明文档
@@ -33,6 +35,15 @@ src  源码
 如果不是系统命令，通过config的getRouter方法（内部是通过loadbalance类）获取路由目标node，发出第一次请求，如果失败，记录，再尝试一次，如果还失败，就返回错误（超时）
 
 失效node最终在负载那里会记录，一段时间内不会再尝试，过了预定义时间后会再次尝试该node。报警目前在ProxyAlert里有段通过邮件微服务发送报警邮件的实现，请酌情修改。
+
+### MicroService 类里记录了taskRunning
+
+taskRunning用于记录当前执行中的任务数量
+
+包含了代理请求任务，但代理请求任务有专门的计数了，所以这个只是参考值。
+
+在获取健康状态时，可以知道当前进行中的任务的数量，对proxy来说，这个数字等于 当前正在转发的任务数量加上正在进行错误报警的任务的数量
+所有基于 MicroService的类，默认识别处理 /isThisNodeHealth 和 /shutdownThisNode，举例来说，对于一个proxy, shutdown有两种命令： /ServiceProxy/proxy/shutdown 和 /shutdownThisNode
 
 ## 2 代码说明
 
@@ -98,7 +109,7 @@ src/Sys/Config/LogConfig: 日志配置，诸如路径等（center和proxy使用�
 ### 2.5 center 相关
 
 - **src\Sys\Microservice** 工作于swoole环境的基础相关支持函数
-- **src\Sys\CenterAlert**  错误报告处理抽离层，继承自Microservice，主要为了方便改动
+- **src\Sys\CenterAlert**  继承自Microservice，其他业务处理抽离层，主要为了方便改动错误处理逻辑和代理请求数记录逻辑
 - **src\Sys\CenterBase** center基类，继承自CenterAlert，实现配置类初始化、基础的起停控制，获取节点状态封装等
 - **src\Sys\CenterReport** 中央的管理查询类，继承自CenterBase，主要是管理查询的需求比较多，比较杂，中间插一层方便代码维护
 - **src\Sys\Center**  Center最终的类，继承自CenterReport，主要负责运转中相关实现，比如接收处理重载配置文件的命令
@@ -109,6 +120,7 @@ src/Sys/Config/LogConfig: 日志配置，诸如路径等（center和proxy使用�
 - **src\Sys\ServiceLocation** 路由下来目标node的地址
 - **src\Sys\ProxyAlert**      错误报告处理抽离层，继承自Microservice，主要为了方便改动
 - **src\Sys\Proxy**           proxy类，继承自ProxyAlert，实现代理
+- **src\Sys\ProxyJob**        proxy类，一次实际的转发任务的处理函数封装
 - **src\proxy**  proxy入口启动文件
 
 ### 2.7 其他 
@@ -117,13 +129,11 @@ src/Sys/Config/LogConfig: 日志配置，诸如路径等（center和proxy使用�
 - **src\Sys\Util\Email\*** 发送邮件的封装类 
 - **src\Sys\Util\Funcs** 其他公共函数封装类
 
-## 3 todo
+## 3 将来可能会完善（只是可能哈）
 
-完善后台管理
-
-支持https
+完善后台管理（尤其是网页版）
 
 更多负载方案
 
-报警
+自动扫描，发现宕机node后，自动重启（扫描，下路由，重启，上路由）
 

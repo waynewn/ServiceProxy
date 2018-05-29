@@ -63,8 +63,14 @@ class XML2CenterConfig {
             throw new \ErrorException('xmlnode:server in servers is missing');
         }
         //根据定义，确认所有的实例的配置以及对应的路由
+        $servipUsed=array();
         foreach( $xml->servers->children() as $serv){
+            $ip = Funcs::getIp((string)$serv->attributes()->ip);
+            if(isset($servipUsed[$ip])){
+                throw new \ErrorException('xmlnode:server\'s ip duplicate');
+            }else{
             self::fillOneProxyConfig($serv,$centerConfig,$templetes);
+        }
         }
         $centerConfig->setServiceMap($centerConfig->serviceMap[-1]);
         unset($centerConfig->serviceMap[-1]);
@@ -193,7 +199,7 @@ class XML2CenterConfig {
                 throw new \ErrorException('templete '.$id.' missing services');
             }
             foreach( $tpl->serivices->children() as $s){
-                $tmp[] = (string)$s->attributes()->name;
+                $tmp[] = strtolower((string)$s->attributes()->name);
             }
             if(empty($tmp)){
                 throw new \ErrorException('templete '.$id.' missing services');

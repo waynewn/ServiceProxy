@@ -2,7 +2,6 @@
 namespace Sys;
 include __DIR__.'/Microservice.php';
 include __DIR__.'/Util/Curl.php';
-include __DIR__.'/Util/Email/SmtpSSL.php';
 /**
  * 把报警抽出来了
  *
@@ -14,15 +13,7 @@ class ProxyAlert  extends Microservice{
      * @var \Sys\Config\ProxyConfig
      */
     public $config;
-	protected function onErr_prepare4task($func,$data)
-	{
-		if($func=='rptErrNode'){
-			$tmp = $this->config->getRouteFor($this->config->monitorConfig->services['email'],$data['time']);
-			return json_decode(json_encode($tmp),true);
-		}else{
-			return null;
-		}
-	}
+
     /**
      * proxy fork 的task异步进程在处理 错误节点问题
      * @param type $uri
@@ -37,7 +28,7 @@ class ProxyAlert  extends Microservice{
         $curl = \Sys\Util\Curl::factory();
         $args = array(
             'users'=> explode(',', $this->config->monitorConfig->usersgroup['ErrorNode']),
-            'title'=>'发现宕机节点',
+            'title'=>'发现宕机节点('.$fromProxy.')',
             'content'=>(is_numeric($request_time)?date('m-d H:i:s',$request_time):$request_time)." ".$fromProxy.' -> '.$nodeIp.':'.$nodePort.' '.$uri,
         );
 		

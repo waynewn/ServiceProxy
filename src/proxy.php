@@ -1,12 +1,10 @@
 <?php
 include 'Sys/Util/Funcs.php';
-include 'Sys/Config/ProxyConfig.php';
-include 'Sys/Config/LogConfig.php';
-include 'Sys/Config/MonitorConfig.php';
-include 'Sys/Log/Txt.php';
 include 'Sys/Proxy.php';
 
-dl("swoole.so");
+if(!class_exists('swoole_http_server',false)){
+    dl("swoole.so");
+}
 
 /**
  * 问中心服务器要自己的配置
@@ -20,7 +18,8 @@ if($worker_num==0){
     $worker_num=5;
 }
 if(isset($cmd['-center']) ){
-    $proxy = new \Sys\Proxy($cmd['-center']);
+    $proxy = new \Sys\Proxy();
+    $proxy->initByCenterURL($cmd['-center']);
     if( $proxy->isConfigLoadedSuccessfully==false){
         die("get config failed,check ip and port\n ");
     }
@@ -28,7 +27,7 @@ if(isset($cmd['-center']) ){
     die("unknown cmds, use -h for help\n ");
 }
 
-$http = new swoole_http_server('0.0.0.0', $proxy->getMyPort());
+$http = new swoole_http_server($proxy->getMyIp(), $proxy->getMyPort());
 $http->set(array(
     'worker_num' =>$worker_num,
     'task_worker_num'=>MAX_TASK_NUM,//因为主要是处理报警任务，所以100个足够了
@@ -36,15 +35,38 @@ $http->set(array(
     'daemonize' => true,
 //    'backlog' => 128,
 ));
+if($proxy->getMyIp()!='127.0.0.1'){
+    $http->listen('127.0.0.1',$proxy->getMyPort(),SWOOLE_SOCK_TCP);
+}
 $proxy->initSwooleServer($http);
 $http->on("request", function ($request, $response) use ($proxy) {
     $proxy->dispatch($request, $response);
 });
 $http->on("task", function ($serv, $task_id, $src_worker_id, $data) use ($proxy){
-    $proxy->onSwooleTask($serv, $task_id, $src_worker_id, $data);
+    $proxy->taskRunning_inc();
+    try{
+        $ret = $proxy->onSwooleTask($serv, $task_id, $src_worker_id, $data);
+        if(empty($ret)){
+            $proxy->taskRunning_dec();
+        }else{
+            return $ret;
+        }
+    }catch(\ErrorException $e){
+        $ret = $proxy->onTaskError($e,$data,false);
+        if(empty($ret)){
+            $proxy->taskRunning_dec();
+        }else{
+            return $ret;
+        }
+    }
 }); 
 $http->on("finish", function ($serv,$task_id, $data) use ($proxy){
-    //error_log("task-------------------------------$data finished");
+    try{
+        $proxy->onSwooleTaskReturn($serv, $task_id, $data);
+    }catch(\ErrorException $ex){
+        $proxy->onTaskError($ex,$data,true);
+    }
+    $proxy->taskRunning_dec();
 });
 $proxy->onListenStart();
 $http->start();

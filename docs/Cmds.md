@@ -67,11 +67,25 @@
 2. 手动向每个proxy发送重置centerIp命令（参看3.2节）
 3. 按理说应该使用备份的配置文件恢复的，如果有变化，再参看变更流程，然后广播更新后的配置（参看3.4节）
 
+### 2.7 center 重启
+
+目前只有proxy启动时需要跟center通讯，所以其他时间center可以直接重启（只影响本地记录各个节点累计代理任务次数归集）。
+
+### 2.7 proxy 重启
+
+1. 关闭该proxy下所有node（由该proxy负责代理请求的node）的路由 (参看 3.12节)
+2. 等一会，可以通过命令确认没有继续发请求了 (参看 3.10节)
+3. 等一会，确保本地node通过该proxy代理的请求也都结束且没有新请求（参看 3.9节）
+4. 重启proxy
+5. 回复该proxy下所有node路由 （参看 3.13节）
+
 ## 3 命令一览
 
 ### 3.1 指定node执行指定命令
 
 `curl "http://{centerIP}:{centerPort}/ServiceProxy/center/nodecmd?node={serviceNodeName}&cmd={start|stop|ping}"`
+
+以 "/path/shellScript ip node监听端口" 的格式调用预定义命令
 
 ### 3.2 重置Proxy的center指向
 
@@ -148,9 +162,9 @@ proxy 需要代理请求，在结果返回之前，连接需要保持，所以�
 		}
 	}
 
-proxy counter 是最近2分钟内转发请求的数量
+proxy counter 是当前正在代理请求的任务数
 
-### 3.10 获取路由情况统计(最近2分钟)
+### 3.10 获取路由情况统计(当前各个节点统计下来节点当前正在执行的任务数)
 
 可以通过namelike可选参数，指定那些节点
 

@@ -1,23 +1,19 @@
 <?php
 namespace Sys;
-use Sys\Util as util;
 include __DIR__.'/CenterAlert.php';
+include __DIR__.'/Util/Curl.php';
 include __DIR__.'/Coroutione/Clients.php';
 
-use Sys\Coroutione\Clients as http_clients;
 /**
  * 中央控制
  * todo ip限制
  * @author wangning
  */
 class CenterBase extends CenterAlert{
-    /**
-     *
-     * @var \Sys\Log\Txt
-     */
-    protected $log;
+
     protected $configFilePath;
     public function __construct($confFilePath) {
+        parent::__construct();
         $this->configFilePath = $confFilePath;
         $this->config=new \Sys\Config\CenterConfig();
         $this->log = null;
@@ -26,7 +22,8 @@ class CenterBase extends CenterAlert{
 
     public function onListenStart()
     {
-        $this->log->syslog('center starting...');
+        error_log('WNWN:onListenStart....................');
+        \Sys\Util\Curl::factory()->httpGet('http://127.0.0.1:'.$this->config->centerPort.'/'.MICRO_SERVICE_MODULENAME.'/center/startTimer',null,null,1);
     }
     public function reloadConfig()
     {
@@ -49,11 +46,7 @@ class CenterBase extends CenterAlert{
     {
         return $this->config->centerPort;
     }
-    /**
-     *
-     * @var \Sys\Config\CenterConfig
-     */
-    public $config;
+
     /**
      * 获取指定proxy status 结果
      * 返回 array(

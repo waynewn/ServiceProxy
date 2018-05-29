@@ -79,6 +79,7 @@ class ProxyConfig {
     );
     public $nodename=array();
     public $configVersion='0.0.0';
+    public $headerTransfer=array();
     /**
      * 
      * @param \Sys\Config\ProxyConfig $newObj
@@ -89,6 +90,9 @@ class ProxyConfig {
             if(!defined($k)){
                 define($k,$v);
             }
+        }
+        if(defined('HEADER_TRANSFER') && strlen(HEADER_TRANSFER)>0){
+            $this->headerTransfer = explode(',', HEADER_TRANSFER);
         }
         if($this->loadBalance===null){
         	$this->loadBalance = new \Sys\LoadBalance\RoundRobin();
@@ -270,20 +274,25 @@ class ProxyConfig {
      * 获取对应服务的实际地址，返回两个
      * @param string $serviceCmd0
      * @param int $timestamp Description
+     * @param string $firstTry 首次尝试时获得的ip:port
      * @return \Sys\Config\ServiceLocation
      */
-    public function getRouteFor($serviceCmd0,$timestamp)
+    public function getRouteFor($serviceCmd0,$timestamp,$firstTry=null)
     {
         $serviceCmd = $this->getRewrite($serviceCmd0);
 
         $pos = strpos($serviceCmd, '/',1);
-        $m  = trim(substr($serviceCmd, 0,$pos),'/');
+        if($pos===false){
+            $m = strtolower(trim($serviceCmd,'/'));
+        }else{
+            $m  = strtolower(trim(substr($serviceCmd, 0,$pos),'/'));
+        }
         
         $serviceMap = $this->getServiceMap($m);
         if(empty($serviceMap)){
             return null;
         }else{
-            $location = $this->loadBalance->chose($serviceMap,$m,$timestamp);
+            $location = $this->loadBalance->chose($serviceMap,$m,$timestamp,$firstTry);
             if($location!=null){
                 $location->cmd=$serviceCmd;
                 return $location;
@@ -300,5 +309,15 @@ class ProxyConfig {
     public function loadbalanceStatus()
     {
         return $this->loadBalance->status();
+    }
+    public function proxyEnd($location){
+        $this->loadBalance->onProxyEnd($location);
+    }
+    public function proxyStart($location){
+        $this->loadBalance->onProxyStart($location);
+    }
+    public function proxyCounterReset()
+    {
+        return $this->loadBalance->proxyCounterReset();
     }
 }

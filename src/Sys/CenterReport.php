@@ -139,9 +139,11 @@ class CenterReport extends CenterBase{
                 }
             }
             ksort($summary);
-            //todo： 翻译检查namelike
-            //todo： error-report
-            $this->returnJsonResponse($response, array('code'=>200,'routeSummary'=>$summary));
+            if(empty($summary)){
+                $this->returnJsonResponse($response, array('code'=>200,'message'=>'routeSummary is empty'));
+            }else{
+                $this->returnJsonResponse($response, array('code'=>200,'routeSummary'=>$summary));
+            }
         }catch(\ErrorException $ex){
             $this->returnJsonResponse($response, array('code'=>400,'msg'=>$ex->getMessage()));
         }
@@ -163,7 +165,6 @@ class CenterReport extends CenterBase{
      */
     protected function searchProxyList($request, $response)
     {
-        $this->log->managelog(__FUNCTION__);
         $limitIp = $this->getReq($request, 'proxyip');
         $limitNodeNameLike = $this->getReq($request, 'nodename');
         $limitServiceNameLike = $this->getReq($request, 'service');

@@ -33,7 +33,8 @@
 * response的content-type尝试识别了json，没考虑xml
 * 自主管理模式：proxy不会主动上报自身情况，center也不会主动发现，宕机由每个proxy自行处理
 * proxy代理请求时，如果发现问题（httpcode不等于200），会进行一次（且只进行一次）换节点重试。同时，默认的，proxy会发报警邮件（ProxyAlert类中实现，请求项目中附带的那个发邮件的微服务，腾讯企业邮箱测试通过）
-* 使用了swoole_table记录路由和请求计数(Config\ProxyConfig和LoadBalance\Base)，因预分配内存，需要设置最大服务数量等参数，相关参数需要proxy或center重启时生效
+* 使用了swoole_table记录路由和请求计数(Config\ProxyConfig和LoadBalance\Base)，因预分配内存，需要设置最大服务数量等参数，相关参数需要proxy或center重启时生效，同时占用内存变高（根据配置从几兆到几十兆每进程）,如果在乎内存，不在乎响应速度和精度，请自行改代码：用内部数组（失精度）或redis（失速度）
+* 不适合接管文件传输接口（swoole最大传输尺寸65535）
 
 # 使用方法
 

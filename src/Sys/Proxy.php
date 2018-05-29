@@ -1,7 +1,12 @@
 <?php
 namespace Sys;
 use \Sys\Util\Funcs as Funcs;
+include __DIR__.'/Log/Txt.php';
+include __DIR__.'/Config/ProxyConfig.php';
+include __DIR__.'/Config/LogConfig.php';
+include __DIR__.'/Config/MonitorConfig.php';
 include __DIR__.'/ProxyAlert.php';
+include __DIR__.'/ProxyJob.php';
 include __DIR__.'/Config/ServiceLocation.php';
 /**
  * 代理
@@ -10,7 +15,9 @@ include __DIR__.'/Config/ServiceLocation.php';
  */
 class Proxy extends ProxyAlert{
     protected $timeStartUp = 0;
-    public function __construct($centerUrl) {
+    
+    public function initByCenterURL($centerUrl)
+    {
         $tmp = $this->getConfig000($centerUrl);
         if($this->isConfigLoadedSuccessfully){
             foreach($tmp->envIni as $k=>$v){
@@ -26,7 +33,6 @@ class Proxy extends ProxyAlert{
             $this->log = new \Sys\Log\Txt($this->config->LogConfig, $this->config->myIp);
         }
         $this->timeStartUp = time();
-        
     }
 
     public function onSwooleTask($serv, $task_id, $src_worker_id, $data)
@@ -77,6 +83,14 @@ class Proxy extends ProxyAlert{
     }
     public function dispatch($request,$response)
     {
+        $remoteAddr = $request->server['remote_addr'];
+        if($remoteAddr!=$this->config->centerIp && $remoteAddr!='127.0.0.1'){
+            $response->status(404);
+            return;
+        }
+        if(parent::dispatch($request, $response)==true){
+            return;
+        }
         $this->log->trace('dispatch '.$request->server['request_uri']);
         switch ($request->server['request_uri']){
             //center通知要更新下服务路由
@@ -98,12 +112,14 @@ class Proxy extends ProxyAlert{
                 $this->returnJsonResponse($response,json_encode($this->config));
                 break;
             case '/'.MICRO_SERVICE_MODULENAME.'/proxy/shutdown':
-                $this->swoole->shutdown();
-                $this->returnJsonResponse($response,array('code'=>0,'msg'=>'shutdown command sent'));
+                $this->nodeShutdown($response);
                 break;
             case '/'.MICRO_SERVICE_MODULENAME.'/proxy/dumpServiceMap':
                 $this->returnJsonResponse($response, array('code'=>0,'serviceMap'=>$this->config->getServiceMap()));
-                break;            
+                break;
+            case '/'.MICRO_SERVICE_MODULENAME.'/proxy/gatherByCenter':
+                $this->gatherByCenter($request, $response);
+                break;
             default:
                 $this->_proxy($request, $response);
                 break;
@@ -171,6 +187,12 @@ class Proxy extends ProxyAlert{
         $this->log->trace('return :'.var_export($ret,true));
         $this->returnJsonResponse($response, json_encode($ret));
     }
+    protected function gatherByCenter($request,$response)
+    {
+        $ret = $this->config->proxyCounterReset();
+        $this->returnJsonResponse($response, json_encode(array('proxy_sum'=>$ret)));
+    }
+
     /**
      * 执行节点命令
      * @param type $request
@@ -215,159 +237,18 @@ class Proxy extends ProxyAlert{
     }
     
     protected function _proxy($request, $response){
-        $uri = $request->server['request_uri'];
-        $post = $request->rawContent();
-        $get = $request->get;
-
-        if(empty($post)){
-            $post = $request->post;
-        }
-        if(empty($post) && $request->server['request_method']!='GET'){
-            $post = '{}';
-        }
-        $request_time = $request->server['request_time'];
-        //$request_time = $request->server['request_time_float'];//浮点数，毫秒
-        $this->log->trace("enter_proxy with $uri ");
-        $ip_port = $this->config->getRouteFor($uri,$request_time);
-        
-        $this->log->trace("final route:". json_encode($ip_port));
-        if(empty($ip_port)){//没找到路由
-            $this->onRouteMissing($response, $uri);
-        }else{
-            if(!empty($get)){
-                $url = $ip_port->cmd.'?'. http_build_query($get);
-            }else{
-                $url = $ip_port->cmd;
-            }
-            $proxyRequestMd5Flg = md5($this->config->myIp.'#'.$ip_port->ip.'#'.$ip_port->port.'#'.$url.'#'.$request_time.rand(1000000,999999999));
-            try{
-                $this->log->proxylogFirstTry($proxyRequestMd5Flg,$uri, $this->config->myIp, $ip_port->ip, $ip_port->port);
-                $this->log->proxylogArgs($proxyRequestMd5Flg, array(
-                    'Cookie'=>$request->cookie,
-                    'QueryString'=>isset($request->server['query_string'])?$request->server['query_string']:'',
-                    'Post_or_Raw'=>$post,
-                ));
-                $dt0 = microtime(true);
-                $ret = $this->_proxy2($ip_port->ip==$this->config->myIp?'127.0.0.1':$ip_port->ip, $ip_port->port, $url, $post,$request->cookie,$response);
-                $this->log->proxylogResult($proxyRequestMd5Flg, $uri,$this->config->myIp,$ip_port->ip, $ip_port->port, sprintf('%.2f',(microtime(true)-$dt0)*1000),$ret);
-            } catch (\ErrorException $ex) {
-                $again = $this->config->getRouteFor($uri,$request_time);
-                if($again->ip!=$ip_port->ip || $again->port!=$ip_port->port){
-                    $this->onProxyFaiedFirst( $uri,$ip_port->ip,$ip_port->port,$request_time);
-                    try{
-                        $this->log->proxylogTryMore($proxyRequestMd5Flg,$uri, $this->config->myIp, $ip_port->ip, $ip_port->port);
-                        $dt0 = microtime(true);
-                        $ret = $this->_proxy2($again->ip==$this->config->myIp?'127.0.0.1':$again->ip, $again->port, $url, $post,$request->cookie,$response);
-                        $this->log->proxylogResult($proxyRequestMd5Flg, $uri,$this->config->myIp,$again->ip, $again->port,sprintf('%.2f',(microtime(true)-$dt0)*1000),$ret);
-                    } catch (\ErrorException $ex) {
-                        $this->log->proxylogResult($proxyRequestMd5Flg, $uri,$this->config->myIp,$again->ip, $again->port,sprintf('%.2f',(microtime(true)-$dt0)*1000),'Failed:'.$ex->getMessage());
-                        $this->onProxyFaiedAll($response, $uri,$again->ip,$again->port,$request_time);
-                    }
-                }else{
-                    $this->log->proxylogResult($proxyRequestMd5Flg,$uri,$this->config->myIp,$ip_port->ip, $ip_port->port, sprintf('%.2f',(microtime(true)-$dt0)*1000), 'Failed:'.$ex->getMessage());
-                    $this->onProxyFaiedAll($response, $uri,$ip_port->ip,$ip_port->port,$request_time);
+        $tmp = new \Sys\ProxyJob;
+        $tmp->init($this->log, $this->config, $this->swoole, $this->getTaskRunningCounter());
+        $headers = array();
+        if(sizeof($this->config->headerTransfer)){
+            foreach($this->config->headerTransfer as $k){
+                if(isset($request->header[$k])){
+                    $headers[$k]=$request->header[$k];
                 }
             }
         }
-    }
-    
-    /**
-     * 
-     * @param type $ip
-     * @param type $port
-     * @param type $uriWithQueryString 注意带上get参数
-     * @param mixed $args4Post 字符串用rawdata，数组用x-www-form-urlencoded 方式进行post
-     * @param array $cookies 接收到的需要转发的请求带的cookie
-     * @param response $response response
-     * @return type
-     */
-    protected function _proxy2($ip,$port,$uriWithQueryString,$args4Post,$cookies,$response)
-    {
-        $this->log->trace("$ip:$port/$uriWithQueryString ". $this->config->getNodename("$ip:$port"));
-        $cli = new \Swoole\Coroutine\Http\Client($ip, $port);
-        $headers = array(
-//            'Host' => "localhost",
-//            "User-Agent" => 'Chrome/49.0.2587.3',
-//            'Accept' => 'text/html,application/xhtml+xml,application/xml',
-//            'Accept-Encoding' => 'gzip',
-        );
-        $bakOfCookie=array();
-        if(is_array($cookies)){
-            foreach($cookies as $k=>$v){
-                $bakOfCookie[$k]=$v;
-            }
-            $cli->setCookies($cookies);
-        }
-        $cli->set([ 'timeout' => PROXY_TIMEOUT]);//1秒超时
-        if(!empty($args4Post)){
-            if(!is_array($args4Post)){
-                $headers["Content-Type"]="application/json";
-            }
-            $cli->setHeaders($headers);
-
-            $cli->post($uriWithQueryString,$args4Post);
-        }else{
-            $cli->setHeaders($headers);
-
-            $cli->get($uriWithQueryString);
-        }
-        if($cli->statusCode!=200){
-            throw new \ErrorException('server down,http-code = '.$cli->statusCode);
-        }
-        $ret = $cli->body;
-        $responseType=$cli->headers['content-type'];
-        if(!empty($cli->cookies)){
-            foreach($cli->cookies as $k=>$v){
-                if(!isset($bakOfCookie[$k]) || $bakOfCookie[$k]!=$v){
-                    $response->cookie($k,$v,time()+86400,'/');
-                }
-            }
-		}
-        $cli->close();
-        
-        if($responseType=='application/json'){
-            $this->returnJsonResponse($response, $ret);
-        }else{
-            $response->header("Content-Type", $responseType);
-            $this->returnTxtResponse($response, $ret);
-        }
-        return $ret;
-    }
-        protected function onProxyFaiedFirst($uri,$ip,$port,$request_time)
-    {
-        $uriWithNodeName = $uri.'('.$this->config->getNodename($ip.':'.$port).')';
-        $data = array('task'=>'rptErrNode','uri'=>$uriWithNodeName,'ip'=>$ip,'port'=>$port,'time'=>$request_time,);
-        $data['prepare4Task']=$this->onErr_prepare4task('rptErrNode',$data);
-        try{
-            if($this->swoole->task($data)===false){
-                $this->log->taskCreateFailed($data,'task pool is full');
-            }
-        }catch(\ErrorException $ex){
-            $this->log->taskCreateFailed($data, $ex->getMessage());
-        }
-        $this->config->markNodeDown($ip, $port, $request_time);
-        $this->log->errorNode($uriWithNodeName, $this->config->myIp, $ip, $port);
-    }
-    protected function onProxyFaiedAll($response,$uri,$ip,$port,$request_time)
-    {
-        $uriWithNodeName = $uri.'('.$this->config->getNodename($ip.':'.$port).')';
-        $data = array('task'=>'rptErrNode','uri'=>$uriWithNodeName,'ip'=>$ip,'port'=>$port,'time'=>$request_time,);
-        $data['prepare4Task'] = $this->onErr_prepare4task('rptErrNode',$data);
-        try{
-            if($this->swoole->task($data)===false){
-                $this->log->taskCreateFailed($data,'task pool is full');
-            }
-        }catch(\ErrorException $ex){
-            $this->log->taskCreateFailed($data, $ex->getMessage());
-        }
-        $this->config->markNodeDown($ip, $port, $request_time);
-        $this->log->errorNode($uriWithNodeName, $this->config->myIp, $ip, $port);
-        $response->status(503);
-    }
-    protected function onRouteMissing($response,$uri)
-    {
-        $this->log->errorNode($uri, null, null, null);
-        $response->status(404);
+        $tmp->_proxy($request, $response,$headers);
+        $tmp->free();
     }
     /**
      * 中控通知要更改配置
@@ -381,14 +262,14 @@ class Proxy extends ProxyAlert{
             $o = \Sys\Config\ProxyConfig::factory($r['data']);
             if(!empty($o)){
                 $this->config->copyFrom($o);
-                $this->log->trace('"config updated on '.$this->config->myIp .'"');
+                $this->log->syslog('"config updated on '.$this->config->myIp .'"');
                 $this->returnJsonResponse($response, '{"code":0,"msg":"config updated to '.$this->config->configVersion.'"}');
             }else{
-                $this->log->trace("config update failed on '.$this->config->myIp.'");
+                $this->log->syslog("config update failed on '.$this->config->myIp.'");
                 $this->returnJsonResponse($response, '{"code":-1,"msg":"data error"}');
             }
         }else{
-            $this->log->trace("config update failed on '.$this->config->myIp.'");
+            $this->log->syslog("config update failed on '.$this->config->myIp.'");
             $this->returnJsonResponse($response, '{"code":-1,"msg":"arg error"}');
         }
     }

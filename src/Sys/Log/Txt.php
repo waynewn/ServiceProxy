@@ -99,7 +99,22 @@ class Txt {
             $this->_log('proxy', "$md5FLG $k = ". (is_scalar($v)?$v: json_encode($v)));
         }
         return;
-    }    
+    }   
+    public function proxylogFirstErr($md5FLG,$serviceapi,$fromIP,$toIP,$toPort,$dur,$ret)
+    {
+        $this->_log('proxy', "$md5FLG $fromIP -> $toIP:$toPort/$serviceapi CONSUMING_TIME = $dur" );
+        if(is_scalar($ret)){
+            if(sizeof($ret)>5000){
+                $this->_log('proxy', "$md5FLG ErrFirst = (first1k-base64ed)". base64_encode(substr($ret,0,1000)));
+            }else{
+                $this->_log('proxy', "$md5FLG ErrFirst = ". $ret);
+            }
+        }else{
+            $this->_log('proxy', "$md5FLG ErrFirst = ". json_encode($ret));
+        }
+        
+        return;
+    }     
     public function proxylogResult($md5FLG,$serviceapi,$fromIP,$toIP,$toPort,$dur,$ret)
     {
         $this->_log('proxy', "$md5FLG $fromIP -> $toIP:$toPort/$serviceapi CONSUMING_TIME = $dur" );

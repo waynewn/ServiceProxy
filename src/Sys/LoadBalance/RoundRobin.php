@@ -10,30 +10,29 @@ class RoundRobin extends Base{
     /**
      * 按规则选择一个地址
      * @param array $locations array(  [ip=>1.2.3.4, port=>1.2.3.4] )
-     * @return \Sys\Config\ServiceLocation
+     * @return array \Sys\Config\ServiceLocation
      */
-    public function chose($locations,$modulename,$timestamp,$ignoreIpPort=null)
+    public function chose($locations,$modulename,$timestamp,$num=1)
     {
+        $ret = array();
         $c = count($locations);
         $i0 = $this->getPointer($modulename);
         $i=$i0;
         for($n=0;$n<$c;$n++,$i++){
             $tmp = $locations[ $i % $c];
-            if($tmp['ip'].':'.$tmp['port']==$ignoreIpPort){
-                continue;
-            }
             if(!$this->isErrorNode($tmp['ip'], $tmp['port'], $timestamp)){
                 $location = new \Sys\Config\ServiceLocation();
                 $location->ip = $tmp['ip'];
                 $location->port=$tmp['port'];
 //                $this->addCounter($location->ip, $location->port, $timestamp);
-                if($i!=$i0){
-                    $this->moduleIndex->set($modulename,array('index'=>$i));
+                $ret[]=$location;
+                if(sizeof($ret)>=$num){
+                    $this->moduleIndex->set($modulename,array('index'=>$i0+1));
+                    break;
                 }
-                return $location;
             }
         }
-        return Null;
+        return $ret;
     }
     public function workAsGlobal() {
         $this->moduleIndex = new \swoole_table(MAX_SERVICES);

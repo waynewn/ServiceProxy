@@ -135,7 +135,8 @@ node有很多配置项，这里使用templateId指明是哪个模板，减少冗
 
 - 默认部署路径，用于拼接3个预定义可通过center调用的命令的路径
 - 三个预定义命令，用于通过center启动、停止、健康检查node。运作方式：center向proxy发指令要求执行指定节点的指定命令，proxy找到对应的实际的命令，以 "/root/ServiceProxy/src/stop.sh ip node监听端口" 的格式调用并将结果返回给center
-- 说明改node都实现了哪些service module- 最后强调一下，shell脚本最后要有输出，没输出会干等到超时
+- 说明改node都实现了哪些service module
+- 最后强调一下，shell脚本最后要有输出，没输出会干等到超时
 
 ## 3 分级部署
 

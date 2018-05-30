@@ -45,56 +45,52 @@ class ProxyJob {
         $this->remoteIP($request);
         //$request_time = $request->server['request_time_float'];//浮点数，毫秒
         $this->log->trace("enter_proxy with $uri ");
-        $ip_port = $this->config->getRouteFor($uri,$request_time);
-        
-        $this->log->trace("final route:". json_encode($ip_port));
-        if(empty($ip_port)){//没找到路由
+        $router2 = $this->config->getRouteFor($uri,$request_time,2);
+        $this->log->trace("final route:". json_encode($router2[0]));
+        if(empty($router2) || empty($router2[0])){//没找到路由
             $this->onRouteMissing($response, $uri);
         }else{
             if(!empty($get)){
-                $url = $ip_port->cmd.'?'. http_build_query($get);
+                $url = $router2[0]->cmd.'?'. http_build_query($get);
             }else{
-                $url = $ip_port->cmd;
+                $url = $router2[0]->cmd;
             }
-            $this->proxyRequestMd5Flg = md5($this->config->myIp.'#'.$ip_port->ip.'#'.$ip_port->port.'#'.$url.'#'.$request_time.rand(1000000,999999999));
+            $this->proxyRequestMd5Flg = md5($this->config->myIp.'#'.$router2[0]->ip.'#'.$router2[0]->port.'#'.$url.'#'.$request_time.rand(1000000,999999999));
             try{
-                $this->log->proxylogFirstTry($this->proxyRequestMd5Flg,$uri, $this->config->myIp, $ip_port->ip, $ip_port->port);
+                $this->log->proxylogFirstTry($this->proxyRequestMd5Flg,$uri, $this->config->myIp, $router2[0]->ip, $router2[0]->port);
                 $this->log->proxylogArgs($this->proxyRequestMd5Flg, array(
                     'Cookie'=>$request->cookie,
                     'QueryString'=>isset($request->server['query_string'])?$request->server['query_string']:'',
                     'Post_or_Raw'=>$post,
                 ));
                 $dt0 = microtime(true);
-                $this->config->proxyStart($ip_port);
-                $ret = $this->_proxy2($ip_port->ip==$this->config->myIp?'127.0.0.1':$ip_port->ip, $ip_port->port, $url, $post,$request->cookie,$response,$headers);
-                $this->config->proxyEnd($ip_port);
-                $this->log->proxylogResult($this->proxyRequestMd5Flg, $uri,$this->config->myIp,$ip_port->ip, $ip_port->port, sprintf('%.2f',(microtime(true)-$dt0)*1000),$ret);
+                $this->config->proxyStart($router2[0]);
+                $ret = $this->_proxy2($router2[0]->ip==$this->config->myIp?'127.0.0.1':$router2[0]->ip, $router2[0]->port, $url, $post,$request->cookie,$response,$headers);
+                $this->config->proxyEnd($router2[0]);
+                $this->log->proxylogResult($this->proxyRequestMd5Flg, $uri,$this->config->myIp,$router2[0]->ip, $router2[0]->port, sprintf('%.2f',(microtime(true)-$dt0)*1000),$ret);
             } catch (\ErrorException $ex) {
-                $this->config->proxyEnd($ip_port);
-                $again = $this->config->getRouteFor($uri,$request_time,$ip_port->ip.':'.$ip_port->port);
+                $this->config->proxyEnd($router2[0]);
 
-                if($again===null){//没有效路由
-                    $this->log->proxylogResult($this->proxyRequestMd5Flg,$uri,$this->config->myIp,$ip_port->ip, $ip_port->port, sprintf('%.2f',(microtime(true)-$dt0)*1000), 'Failed:'.$ex->getMessage());
-                    $this->onProxyFaiedAll($response, $uri,$ip_port->ip,$ip_port->port,$request_time);                    
+                if(empty($router2[1])){//没有其他有效路由，记录日志，报警，然后返回
+                    $this->log->proxylogResult($this->proxyRequestMd5Flg,$uri,$this->config->myIp,$router2[0]->ip, $router2[0]->port, sprintf('%.2f',(microtime(true)-$dt0)*1000), 'Failed:'.$ex->getMessage());
+                    $this->onProxyFaiedAll($response, $uri,$router2[0]->ip,$router2[0]->port,$request_time);                    
                     return;
-                }elseif($again->ip==$ip_port->ip && $again->port==$ip_port->port){//只剩这个路由，没有其他路由，也没必要再试
-                    $this->log->proxylogResult($this->proxyRequestMd5Flg,$uri,$this->config->myIp,$ip_port->ip, $ip_port->port, sprintf('%.2f',(microtime(true)-$dt0)*1000), 'Failed:'.$ex->getMessage());
-                    $this->onProxyFaiedAll($response, $uri,$ip_port->ip,$ip_port->port,$request_time);                      
-                    return;
+                }else{//记录日志
+                    $this->log->proxylogFirstErr($this->proxyRequestMd5Flg,$uri,$this->config->myIp,$router2[0]->ip, $router2[0]->port, sprintf('%.2f',(microtime(true)-$dt0)*1000), 'Failed:'.$ex->getMessage());
                 }
-
-                $this->onProxyFaiedFirst( $uri,$ip_port->ip,$ip_port->port,$request_time);
-                try{
-                    $this->log->proxylogTryMore($this->proxyRequestMd5Flg,$uri, $this->config->myIp, $ip_port->ip, $ip_port->port);
+                //报警
+                $this->onProxyFaiedFirst( $uri,$router2[0]->ip,$router2[0]->port,$request_time);
+                try{//使用另一个路由再试一下
+                    $this->log->proxylogTryMore($this->proxyRequestMd5Flg,$uri, $this->config->myIp, $router2[1]->ip, $router2[1]->port);
                     $dt0 = microtime(true);
-                    $this->config->proxyStart($again);
-                    $ret = $this->_proxy2($again->ip==$this->config->myIp?'127.0.0.1':$again->ip, $again->port, $url, $post,$request->cookie,$response,$headers);
-                    $this->config->proxyEnd($again);
-                    $this->log->proxylogResult($this->proxyRequestMd5Flg, $uri,$this->config->myIp,$again->ip, $again->port,sprintf('%.2f',(microtime(true)-$dt0)*1000),$ret);
+                    $this->config->proxyStart($router2[1]);
+                    $ret = $this->_proxy2($router2[1]->ip==$this->config->myIp?'127.0.0.1':$router2[1]->ip, $router2[1]->port, $url, $post,$request->cookie,$response,$headers);
+                    $this->config->proxyEnd($router2[1]);
+                    $this->log->proxylogResult($this->proxyRequestMd5Flg, $uri,$this->config->myIp,$router2[1]->ip, $router2[1]->port,sprintf('%.2f',(microtime(true)-$dt0)*1000),$ret);
                 } catch (\ErrorException $ex) {
-                    $this->config->proxyEnd($again);
-                    $this->log->proxylogResult($this->proxyRequestMd5Flg, $uri,$this->config->myIp,$again->ip, $again->port,sprintf('%.2f',(microtime(true)-$dt0)*1000),'Failed:'.$ex->getMessage());
-                    $this->onProxyFaiedAll($response, $uri,$again->ip,$again->port,$request_time);
+                    $this->config->proxyEnd($router2[1]);
+                    $this->log->proxylogResult($this->proxyRequestMd5Flg, $uri,$this->config->myIp,$router2[1]->ip, $router2[1]->port,sprintf('%.2f',(microtime(true)-$dt0)*1000),'Failed:'.$ex->getMessage());
+                    $this->onProxyFaiedAll($response, $uri,$router2[1]->ip,$router2[1]->port,$request_time);
                 }
                
             }
@@ -261,7 +257,11 @@ class ProxyJob {
     {
             if($func=='rptErrNode'){
                     $tmp = $this->config->getRouteFor($this->config->monitorConfig->services['email'],$data['time']);
-                    return json_decode(json_encode($tmp),true);
+                    if(empty($tmp) || empty($tmp[0])){
+                        return null;
+                    }else{
+                        return json_decode(json_encode($tmp[0]),true);
+                    }
             }else{
                     return null;
             }

@@ -95,7 +95,7 @@ class ProxyConfig {
             $this->headerTransfer = explode(',', HEADER_TRANSFER);
         }
         if($this->loadBalance===null){
-        	$this->loadBalance = new \Sys\LoadBalance\RoundRobin();
+            $this->loadBalance = new \Sys\LoadBalance\RoundRobin();
             if(!is_scalar($this->rewriteRuleIndex)){
                 $this->loadBalance->workAsGlobal();
             }
@@ -274,10 +274,10 @@ class ProxyConfig {
      * 获取对应服务的实际地址，返回两个
      * @param string $serviceCmd0
      * @param int $timestamp Description
-     * @param string $firstTry 首次尝试时获得的ip:port
-     * @return \Sys\Config\ServiceLocation
+     * @param int $num 首次尝试时获得的ip:port
+     * @return array \Sys\Config\ServiceLocation
      */
-    public function getRouteFor($serviceCmd0,$timestamp,$firstTry=null)
+    public function getRouteFor($serviceCmd0,$timestamp,$num=1)
     {
         $serviceCmd = $this->getRewrite($serviceCmd0);
 
@@ -292,10 +292,14 @@ class ProxyConfig {
         if(empty($serviceMap)){
             return null;
         }else{
-            $location = $this->loadBalance->chose($serviceMap,$m,$timestamp,$firstTry);
-            if($location!=null){
-                $location->cmd=$serviceCmd;
-                return $location;
+            $router2 = $this->loadBalance->chose($serviceMap,$m,$timestamp,$num);
+            if($router2!=null){
+                for($i=0;$i<$num;$i++){
+                    if($router2[$i]){
+                        $router2[$i]->cmd=$serviceCmd;
+                    }
+                }
+                return $router2;
             }else{
                 return null;
             }
